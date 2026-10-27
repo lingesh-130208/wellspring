@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { getConfiguredAccount, getConfiguredPatients, getSession, requireAccountRole } from './auth.js';
+import { isValidAccessCode, normalizeFeedbackCategory, parseSymptomRating } from './case-validation.mjs';
 const supabaseUrl = process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const headers = () => ({ apikey: serviceKey || '', Authorization: 'Bearer ' + (serviceKey || ''), 'Content-Type': 'application/json' });
@@ -41,7 +42,7 @@ export default async function handler(req:any,res:any) {
    const rows=await r.json(); return res.status(201).json({case:rows[0]});
   }
   if(req.method==='GET' && accessCode) {
-   if(!/^[A-F0-9]{10}$/.test(accessCode)) return res.status(400).json({error:'Access code format is invalid.'});
+   if(!isValidAccessCode(accessCode)) return res.status(400).json({error:'Access code format is invalid.'});
    const r=await fetch(supabaseUrl+'/rest/v1/care_cases?access_code=eq.'+encodeURIComponent(accessCode)+'&select=patient_account_id,patient_label,report_summary,clinician_plan,video_recommendations,clinician_approved,feedback,created_at,expires_at&limit=1',{headers:headers()});
    if(!r.ok) return res.status(502).json({error:'Case lookup failed.'});
    const rows=await r.json(); const record=rows[0];
@@ -59,7 +60,7 @@ export default async function handler(req:any,res:any) {
   if(req.method==='POST' && url.searchParams.get('action')==='review-feedback') {
    // clinician session and clinic token already checked
    const body=req.body||{}; const targetCode=String(body.accessCode||'').trim().toUpperCase(); const feedbackId=String(body.feedbackId||'');
-   if(!/^[A-F0-9]{10}$/.test(targetCode) || !feedbackId) return res.status(400).json({error:'Case code and feedback identifier are required.'});
+   if(!isValidAccessCode(targetCode) || !feedbackId) return res.status(400).json({error:'Case code and feedback identifier are required.'});
    const lookup=await fetch(supabaseUrl+'/rest/v1/care_cases?access_code=eq.'+encodeURIComponent(targetCode)+'&select=id,patient_account_id,feedback,expires_at&limit=1',{headers:headers()});
    if(!lookup.ok) return res.status(502).json({error:'Could not verify the case.'});
    const rows=await lookup.json(); const record=rows[0];
@@ -72,15 +73,14 @@ export default async function handler(req:any,res:any) {
    return res.status(200).json({ok:true});
   }
   if(req.method==='POST' && url.searchParams.get('action')==='feedback') {
-   if(!/^[A-F0-9]{10}$/.test(accessCode)) return res.status(400).json({error:'A valid access code is required.'});
+   if(!isValidAccessCode(accessCode)) return res.status(400).json({error:'A valid access code is required.'});
    const body=req.body||{};
    const message=String(body.message||'').trim().slice(0,1000);
-   const category=String(body.category||'general');
-   const allowedCategories=['completed','too_difficult','unable_to_perform','uncomfortable','pain','video_not_helpful','missed','general'];
-   if(!allowedCategories.includes(category)) return res.status(400).json({error:'Choose a valid feedback category.'});
-   const rating=body.symptomRating===null || body.symptomRating===undefined || body.symptomRating==='' ? null : Number(body.symptomRating);
-   if(rating!==null && (!Number.isInteger(rating)||rating<0||rating>10)) return res.status(400).json({error:'Self-reported rating must be from 0 to 10.'});
-   if(message.length<2 && !allowedCategories.includes(category)) return res.status(400).json({error:'Feedback is required.'});
+   const category=normalizeFeedbackCategory(body.category);
+   if(!category) return res.status(400).json({error:'Choose a valid feedback category.'});
+   const ratingResult=parseSymptomRating(body.symptomRating);
+   if(!ratingResult.ok) return res.status(400).json({error:'Self-reported rating must be an integer from 0 to 10.'});
+   const rating=ratingResult.value;
    const lookup=await fetch(supabaseUrl+'/rest/v1/care_cases?access_code=eq.'+encodeURIComponent(accessCode)+'&select=id,patient_account_id,feedback,expires_at&limit=1',{headers:headers()});
    if(!lookup.ok) return res.status(502).json({error:'Could not verify the case.'});
    const rows=await lookup.json(); const record=rows[0];
