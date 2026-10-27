@@ -42,12 +42,18 @@ export default async function handler(req:any,res:any) {
   }
   if(req.method==='GET' && accessCode) {
    if(!/^[A-F0-9]{10}$/.test(accessCode)) return res.status(400).json({error:'Access code format is invalid.'});
-   const r=await fetch(supabaseUrl+'/rest/v1/care_cases?access_code=eq.'+encodeURIComponent(accessCode)+'&select=patient_account_id,patient_label,report_summary,clinician_plan,video_recommendations,clinician_approved,created_at,expires_at&limit=1',{headers:headers()});
+   const r=await fetch(supabaseUrl+'/rest/v1/care_cases?access_code=eq.'+encodeURIComponent(accessCode)+'&select=patient_account_id,patient_label,report_summary,clinician_plan,video_recommendations,clinician_approved,feedback,created_at,expires_at&limit=1',{headers:headers()});
    if(!r.ok) return res.status(502).json({error:'Case lookup failed.'});
    const rows=await r.json(); const record=rows[0];
    if(!record || new Date(record.expires_at).getTime()<Date.now() || (session.role === 'patient' && record.patient_account_id !== session.id)) return res.status(404).json({error:'No active case found for that code.'});
    if(!record.clinician_approved) return res.status(403).json({error:'This plan has not been approved by a clinician.'});
-   return res.status(200).json({case:record});
+   const patientProgress = (Array.isArray(record.feedback) ? record.feedback : []).map((f:any) => ({
+    id:String(f.id || ''), exercise:String(f.exercise || 'General session'), category:String(f.category || 'general'),
+    comfort:String(f.comfort || 'not_recorded'), symptomRating:f.symptomRating ?? null,
+    message:String(f.message || ''), createdAt:String(f.createdAt || ''), reviewStatus:String(f.reviewStatus || 'pending')
+   }));
+   const { patient_account_id: _patientAccountId, feedback: _rawFeedback, ...safeRecord } = record;
+   return res.status(200).json({case:{...safeRecord, patient_progress:patientProgress}});
   }
   if(req.method==='POST' && url.searchParams.get('action')==='review-feedback') {
    // clinician session and clinic token already checked
