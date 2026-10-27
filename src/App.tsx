@@ -1,0 +1,119 @@
+import { useMemo, useState } from 'react';
+import { Activity, ArrowRight, BookOpen, CheckCircle2, ClipboardList, FileText, HeartPulse, PlayCircle, ShieldCheck, Upload, Video, Users, AlertTriangle } from 'lucide-react';
+
+type ReportSummary = { summary: string; mentioned: string[]; questionsForClinician: string[]; caution: string };
+type VideoPick = { title: string; reason: string; url: string; source: string };
+const videoLibrary: VideoPick[] = [
+  { title: 'Pelvic floor muscle exercises: a gentle introduction', reason: 'General, low-intensity education about pelvic-floor muscles.', url: 'https://www.youtube.com/results?search_query=NHS+pelvic+floor+muscle+exercises+women', source: 'NHS educational video search' },
+  { title: 'Bladder health and pelvic-floor physiotherapy', reason: 'Education on bladder symptoms and when to ask a physiotherapist for help.', url: 'https://www.youtube.com/results?search_query=pelvic+floor+physiotherapy+bladder+health+women+NHS', source: 'NHS / physiotherapy educational search' },
+  { title: 'Safe movement for older adults', reason: 'Gentle mobility education; choose only movements cleared by the treating clinician.', url: 'https://www.youtube.com/results?search_query=NHS+safe+gentle+movement+older+adults', source: 'NHS educational video search' },
+  { title: 'Pelvic health after surgery: clinician-led guidance', reason: 'For reports mentioning surgery; review with the clinician before following any exercise.', url: 'https://www.youtube.com/results?search_query=pelvic+floor+physiotherapist+after+surgery+guidance', source: 'Pelvic-health physiotherapy educational search' }
+];
+const demoReport = 'Synthetic demo only: older adult with urinary leakage noted in the clinic report. No exercise clearance or contraindication status is documented.';
+
+function chooseVideos(text: string): VideoPick[] {
+  const t = text.toLowerCase();
+  const picks: VideoPick[] = [];
+  if (/surgery|operation|post.?op|prolapse repair/.test(t)) picks.push(videoLibrary[3]);
+  if (/urinary|leakage|incontinence|bladder|urgency/.test(t)) picks.push(videoLibrary[1], videoLibrary[0]);
+  if (/mobility|fall|balance|frail|older adult/.test(t)) picks.push(videoLibrary[2]);
+  if (!picks.length) picks.push(videoLibrary[0]);
+  return [...new Map(picks.map(p => [p.title, p])).values()].slice(0, 3);
+}
+
+export default function App() {
+  const [reportText, setReportText] = useState('');
+  const [reportName, setReportName] = useState('');
+  const [summary, setSummary] = useState<ReportSummary | null>(null);
+  const [plan, setPlan] = useState('');
+  const [videos, setVideos] = useState<VideoPick[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState('');
+  const [role, setRole] = useState<'clinic' | 'patient'>('clinic');
+  const [accessCode, setAccessCode] = useState('');
+  const [feedback, setFeedback] = useState('');
+  const [consent, setConsent] = useState(false);
+
+  const reportReady = reportText.trim().length > 20;
+  const recommendations = useMemo(() => videos.length ? videos : chooseVideos(reportText), [videos, reportText]);
+
+  async function handleFile(file?: File) {
+    if (!file) return;
+    setReportName(file.name);
+    if (file.type === 'text/plain' || /\.txt$/i.test(file.name)) {
+      setReportText(await file.text());
+      setSummary(null); setPlan(''); setVideos([]);
+      setStatus('Text report loaded. Review it for accuracy before processing.');
+    } else if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+      setStatus('PDF selected. For this first build, paste the report text into the box below; scanned PDFs need OCR and must be checked by a clinician.');
+    } else {
+      setStatus('Please upload a TXT file or paste de-identified report text. PDF/DOCX extraction will be added after validation.');
+    }
+  }
+
+  async function processReport() {
+    if (!reportReady) { setStatus('Add report text first (use synthetic or de-identified information).'); return; }
+    if (!consent) { setStatus('Confirm that the report is synthetic or de-identified before processing.'); return; }
+    setBusy(true); setStatus('Organizing the report and matching educational resources…');
+    try {
+      const response = await fetch('/api/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reportText }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Report service is unavailable.');
+      setSummary(data.summary);
+      setPlan(data.planDraft);
+      setVideos(data.videos || chooseVideos(reportText));
+      setStatus(data.mode === 'ai' ? 'AI-assisted draft generated. Clinician review is required.' : 'Local demo analysis generated. Connect an AI provider for AI-assisted extraction.');
+    } catch (e) {
+      setSummary({ summary: 'Report text is available for clinician review. Automated extraction could not be reached.', mentioned: [], questionsForClinician: ['Confirm the reported symptoms and their timeline.', 'Check contraindications, recent procedures, pain, bleeding, and clinician exercise clearance.'], caution: 'No diagnosis or exercise clearance was generated.' });
+      setPlan('DRAFT ONLY — A clinician must assess the report, check contraindications and approve any individualized plan. Do not use this draft to start, intensify, or change treatment.');
+      setVideos(chooseVideos(reportText));
+      setStatus('AI endpoint unavailable; showing a clearly labeled local fallback. No AI call succeeded.');
+    } finally { setBusy(false); }
+  }
+
+  return <div className="app-shell">
+    <header className="topbar">
+      <a className="brand" href="#" aria-label="WellSpring home"><span className="brand-mark"><HeartPulse size={22}/></span><span><strong>WellSpring</strong><small>PS13 · connected care</small></span></a>
+      <nav><a href="#workflow">How it works</a><a href="#resources">Learning resources</a><a href="#safety">Safety</a></nav>
+      <div className="role-switch" aria-label="Select portal"><button className={role === 'clinic' ? 'selected' : ''} onClick={() => setRole('clinic')}>Clinic</button><button className={role === 'patient' ? 'selected' : ''} onClick={() => setRole('patient')}>Patient</button></div>
+    </header>
+
+    <main>
+      <section className="hero">
+        <div className="hero-copy"><div className="eyebrow"><span className="dot"/> REHABILITATION SUPPORT · PROOF OF CONCEPT</div>
+          <h1>Better care starts<br/>with <em>being understood.</em></h1>
+          <p>Organize what the clinic report actually says, prepare a clinician-reviewed draft, and connect each person to relevant educational videos.</p>
+          <div className="hero-actions"><a className="primary-btn" href="#workspace">Open care workspace <ArrowRight size={17}/></a><a className="text-link" href="#workflow">Explore the workflow</a></div>
+          <div className="trust-line"><ShieldCheck size={17}/> Clinician-led decisions · No automated diagnosis</div>
+        </div>
+        <div className="hero-visual"><div className="orb orb-a"/><div className="orb orb-b"/><div className="care-card"><div className="care-card-head"><span className="mini-icon"><Activity size={18}/></span><span className="live-label">CARE SNAPSHOT</span><span className="more">•••</span></div><div className="profile-row"><div className="avatar">W</div><div><strong>Whole-person care</strong><small>Report-informed support</small></div><span className="check"><CheckCircle2 size={17}/></span></div><div className="soft-line"/><div className="metric-row"><div><small>Report review</small><strong>Clinician-led</strong></div><div><small>Video matching</small><strong>Report-linked</strong></div></div><div className="resource-preview"><span className="play-bubble"><PlayCircle size={20}/></span><div><strong>Learning, at your pace</strong><small>Relevant · reviewed · optional</small></div></div></div><div className="floating-pill"><span className="pill-dot"/> Connected workflow</div></div>
+      </section>
+
+      <section className="feature-strip" id="workflow"><div><span><FileText/></span><strong>Report-first</strong><small>Use stated facts, not guesses</small></div><div><span><ClipboardList/></span><strong>Clinician review</strong><small>Drafts require approval</small></div><div><span><Video/></span><strong>Relevant learning</strong><small>Videos matched to report topics</small></div><div><span><Users/></span><strong>Care connection</strong><small>Patient feedback loop</small></div></section>
+
+      <section className="workspace-section" id="workspace">
+        <div className="section-heading"><div><div className="eyebrow">CARE WORKSPACE</div><h2>{role === 'clinic' ? 'Turn a report into a reviewable care draft.' : 'Your care resources, in one place.'}</h2><p>{role === 'clinic' ? 'Use synthetic or de-identified text. The system separates what is documented from what still needs a clinician.' : 'Enter a clinic-issued access code to look up your approved care plan when the connected patient service is configured.'}</p></div><span className="workspace-tag"><span className="dot"/> {role === 'clinic' ? 'CLINIC WORKSPACE' : 'PATIENT PORTAL'}</span></div>
+        {role === 'clinic' ? <div className="workspace-grid">
+          <div className="panel report-panel"><div className="panel-title"><span className="step-num">01</span><div><h3>Existing clinic report</h3><p>Only include information you are authorized to use.</p></div></div>
+            <label className="upload-box"><Upload size={23}/><strong>{reportName || 'Choose a report text file'}</strong><span>TXT supported in this build · PDF/DOCX extraction pending</span><input type="file" accept=".txt,.pdf" onChange={e => handleFile(e.target.files?.[0])}/></label>
+            <div className="or-divider"><span>OR PASTE REPORT TEXT</span></div><textarea value={reportText} onChange={e => {setReportText(e.target.value); setSummary(null); setVideos([]);}} placeholder="Paste synthetic or de-identified report text here…"/><div className="input-foot"><button className="demo-btn" onClick={() => {setReportText(demoReport);setReportName('Synthetic demo report');setSummary(null);setPlan('');setVideos([]);setStatus('Synthetic report loaded.');}}>Load synthetic example</button><span>{reportText.length} characters</span></div>
+            <label className="consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)}/><span>I confirm this is synthetic or de-identified information and I am authorized to process it.</span></label>
+            <button className="primary-btn full" disabled={busy} onClick={processReport}>{busy ? 'Processing…' : 'Analyze report & match resources'} <ArrowRight size={17}/></button>{status && <p className="status-message" role="status">{status}</p>}
+          </div>
+          <div className="panel results-panel"><div className="panel-title"><span className="step-num">02</span><div><h3>Report-informed review</h3><p>AI output is an assistant, never a decision-maker.</p></div></div>
+            {!summary ? <div className="empty-state"><div className="empty-icon"><ClipboardList size={25}/></div><strong>Your report review will appear here</strong><p>Submit report text to organize documented information and generate questions for the treating clinician.</p><div className="empty-points"><span><CheckCircle2 size={15}/> No automatic diagnosis</span><span><CheckCircle2 size={15}/> Missing information stays missing</span><span><CheckCircle2 size={15}/> Clinician approval required</span></div></div> : <div className="result-content"><div className="result-banner"><CheckCircle2 size={18}/><span>Draft generated · verify every field</span></div><h4>Summary of stated information</h4><p>{summary.summary}</p><h4>Items explicitly mentioned</h4><div className="chips">{(summary.mentioned.length ? summary.mentioned : ['No structured items returned']).map((x,i)=><span key={i}>{x}</span>)}</div><h4>Questions for the treating clinician</h4><ul>{summary.questionsForClinician.map((x,i)=><li key={i}>{x}</li>)}</ul><div className="caution-note"><AlertTriangle size={17}/><span>{summary.caution}</span></div><h4>Clinician-facing plan draft</h4><div className="plan-draft">{plan}</div></div>}
+          </div>
+        </div> : <div className="patient-card panel"><div className="empty-icon"><HeartPulse size={25}/></div><h3>Access your clinic-approved plan</h3><p>Patient lookup will become active when secure database storage and clinic-issued access codes are configured. This preview does not look up or expose patient records yet.</p><div className="code-row"><input value={accessCode} onChange={e=>setAccessCode(e.target.value)} placeholder="Clinic-issued access code"/><button className="primary-btn" onClick={()=>setStatus('Patient lookup is not connected yet. No record was retrieved.')}>Find my plan <ArrowRight size={16}/></button></div>{status && <p className="status-message">{status}</p>}</div>}
+      </section>
+
+      <section className="resources-section" id="resources"><div className="section-heading"><div><div className="eyebrow">PERSONALIZED LEARNING</div><h2>Helpful videos, chosen from the report.</h2><p>Topics are matched to words in the submitted report. Videos are optional educational resources—not treatment instructions.</p></div><span className="resource-count"><BookOpen size={17}/> REPORT-MATCHED</span></div>
+        <div className="video-grid">{recommendations.map((v,i)=><article className="video-card" key={v.title}><div className={'video-art art-'+i}><div className="video-play"><PlayCircle size={30}/></div><span className="video-label">EDUCATIONAL RESOURCE</span></div><div className="video-body"><div className="video-source">{v.source}</div><h3>{v.title}</h3><p>{v.reason}</p><a href={v.url} target="_blank" rel="noreferrer">Find and play video <ArrowRight size={15}/></a><small>Open the video and confirm it is appropriate with the treating clinician before following exercises.</small></div></article>)}</div>
+      </section>
+
+      <section className="feedback-section"><div className="feedback-copy"><div className="eyebrow">CLOSE THE LOOP</div><h2>Care should be a conversation.</h2><p>Patient session feedback can help the clinic understand how the person felt and whether a follow-up is needed. It cannot diagnose complications.</p></div><div className="feedback-form panel"><label htmlFor="feedback">Session feedback</label><textarea id="feedback" value={feedback} onChange={e=>setFeedback(e.target.value)} placeholder="Example: I felt comfortable / I need help with…"/><button className="secondary-btn" onClick={()=>setStatus('Feedback preview only: it has not been sent or saved because patient database services are not configured.')}>Preview feedback <ArrowRight size={16}/></button><small>Feedback is not transmitted in this prototype until the backend is configured.</small></div></section>
+
+      <section className="safety-section" id="safety"><div className="safety-icon"><ShieldCheck size={24}/></div><div><h3>Safety comes before automation.</h3><p>This is a hackathon proof of concept, not a validated medical device or production clinical-record system. No video or exercise is automatically prescribed. A qualified clinician must review the original report, check contraindications and approve any individualized plan. ECG or glucose readings alone do not establish exercise clearance. Do not use real identifiable patient data in this demo.</p></div></section>
+    </main>
+    <footer><a className="brand" href="#"><span className="brand-mark"><HeartPulse size={20}/></span><span><strong>WellSpring</strong><small>Care, connected.</small></span></a><span>PS13 · Hackathon proof of concept</span><span>Designed for clinician-led support</span></footer>
+  </div>;
+}
