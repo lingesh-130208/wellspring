@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { getConfiguredAccount, getConfiguredPatients, getSession, requireAccountRole } from './auth';
+import { getConfiguredAccount, getConfiguredPatients, getSession, requireAccountRole } from './auth.js';
 const supabaseUrl = process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const headers = () => ({ apikey: serviceKey || '', Authorization: 'Bearer ' + (serviceKey || ''), 'Content-Type': 'application/json' });
