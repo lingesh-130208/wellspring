@@ -1,4 +1,7 @@
 import { useMemo, useState } from 'react';
+import * as pdfjsLib from 'pdfjs-dist';
+import mammoth from 'mammoth/mammoth.browser';
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 import { Activity, ArrowRight, BookOpen, CheckCircle2, ClipboardList, FileText, HeartPulse, PlayCircle, ShieldCheck, Upload, Video, Users, AlertTriangle } from 'lucide-react';
 
 type ReportSummary = { summary: string; mentioned: string[]; questionsForClinician: string[]; caution: string };
@@ -44,14 +47,31 @@ export default function App() {
   async function handleFile(file?: File) {
     if (!file) return;
     setReportName(file.name);
-    if (file.type === 'text/plain' || /\.txt$/i.test(file.name)) {
-      setReportText(await file.text());
+    try {
+      if (file.type === 'text/plain' || /\.txt$/i.test(file.name)) {
+        setReportText(await file.text());
+      } else if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+        const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+        const pages: string[] = [];
+        for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
+          const page = await pdf.getPage(pageNo);
+          const content = await page.getTextContent();
+          pages.push(content.items.map((item: any) => 'str' in item ? item.str : '').join(' '));
+        }
+        const extracted = pages.join('\n').trim();
+        if (!extracted) { setStatus('This PDF appears scanned or contains no selectable text. OCR is not enabled yet; paste a clinician-verified transcription instead.'); return; }
+        setReportText(extracted);
+      } else if (/\.docx$/i.test(file.name) || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+        const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+        setReportText(result.value.trim());
+      } else {
+        setStatus('Please use TXT, text-based PDF, or DOCX. Scanned PDFs require OCR and human verification.');
+        return;
+      }
       setSummary(null); setPlan(''); setVideos([]);
-      setStatus('Text report loaded. Review it for accuracy before processing.');
-    } else if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
-      setStatus('PDF selected. For this first build, paste the report text into the box below; scanned PDFs need OCR and must be checked by a clinician.');
-    } else {
-      setStatus('Please upload a TXT file or paste de-identified report text. PDF/DOCX extraction will be added after validation.');
+      setStatus('Report text extracted locally. Verify it against the original document before processing.');
+    } catch {
+      setStatus('Could not extract this file. Try a text-based PDF/DOCX or paste a de-identified transcription.');
     }
   }
 
@@ -129,7 +149,7 @@ export default function App() {
         <div className="section-heading"><div><div className="eyebrow">CARE WORKSPACE</div><h2>{role === 'clinic' ? 'Turn a report into a reviewable care draft.' : 'Your care resources, in one place.'}</h2><p>{role === 'clinic' ? 'Use synthetic or de-identified text. The system separates what is documented from what still needs a clinician.' : 'Enter a clinic-issued access code to look up your approved care plan when the connected patient service is configured.'}</p></div><span className="workspace-tag"><span className="dot"/> {role === 'clinic' ? 'CLINIC WORKSPACE' : 'PATIENT PORTAL'}</span></div>
         {role === 'clinic' ? <div className="workspace-grid">
           <div className="panel report-panel"><div className="panel-title"><span className="step-num">01</span><div><h3>Existing clinic report</h3><p>Only include information you are authorized to use.</p></div></div>
-            <label className="upload-box"><Upload size={23}/><strong>{reportName || 'Choose a report text file'}</strong><span>TXT supported in this build · PDF/DOCX extraction pending</span><input type="file" accept=".txt,.pdf" onChange={e => handleFile(e.target.files?.[0])}/></label>
+            <label className="upload-box"><Upload size={23}/><strong>{reportName || 'Choose a report text file'}</strong><span>TXT, text-based PDF and DOCX · scanned PDF OCR pending</span><input type="file" accept=".txt,.pdf,.docx" onChange={e => handleFile(e.target.files?.[0])}/></label>
             <div className="or-divider"><span>OR PASTE REPORT TEXT</span></div><textarea value={reportText} onChange={e => {setReportText(e.target.value); setSummary(null); setVideos([]);}} placeholder="Paste synthetic or de-identified report text here…"/><div className="input-foot"><button className="demo-btn" onClick={() => {setReportText(demoReport);setReportName('Synthetic demo report');setSummary(null);setPlan('');setVideos([]);setStatus('Synthetic report loaded.');}}>Load synthetic example</button><span>{reportText.length} characters</span></div>
             <label className="consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)}/><span>I confirm this is synthetic or de-identified information and I am authorized to process it.</span></label>
             <button className="primary-btn full" disabled={busy} onClick={processReport}>{busy ? 'Processing…' : 'Analyze report & match resources'} <ArrowRight size={17}/></button>{status && <p className="status-message" role="status">{status}</p>}
