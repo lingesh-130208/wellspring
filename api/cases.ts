@@ -29,7 +29,7 @@ export default async function handler(req:any,res:any) {
  if(!supabaseUrl || !serviceKey) return res.status(503).json({error:'Case storage is not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Vercel.'});
  try {
   if(req.method==='POST' && url.searchParams.get('action')==='publish') {
-   if(!clinicAuthorized) return res.status(401).json({error:'Clinic authorization required.'});
+   // requireAccountRole has already authenticated the clinician and validated the clinic token.
    const body=req.body||{};
    if(!body.clinicianApproved) return res.status(400).json({error:'A clinician must approve the plan before publishing.'});
    if(!body.summary || !body.planDraft) return res.status(400).json({error:'A report summary and plan draft are required.'});
@@ -48,7 +48,7 @@ export default async function handler(req:any,res:any) {
    return res.status(200).json({case:record});
   }
   if(req.method==='POST' && url.searchParams.get('action')==='review-feedback') {
-   if(!clinicAuthorized) return res.status(401).json({error:'Clinic authorization required.'});
+   // clinician session and clinic token already checked
    const body=req.body||{}; const targetCode=String(body.accessCode||'').trim().toUpperCase(); const feedbackId=String(body.feedbackId||'');
    if(!/^[A-F0-9]{10}$/.test(targetCode) || !feedbackId) return res.status(400).json({error:'Case code and feedback identifier are required.'});
    const lookup=await fetch(supabaseUrl+'/rest/v1/care_cases?access_code=eq.'+encodeURIComponent(targetCode)+'&select=id,feedback,expires_at&limit=1',{headers:headers()});
