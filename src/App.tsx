@@ -72,8 +72,10 @@ export default function App() {
     if (!('speechSynthesis' in window)) { setVoiceStatus('Read-aloud is not supported in this browser.'); return; }
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance([String(patientCase.report_summary?.summary || ''), String(patientCase.clinician_plan || '')].filter(Boolean).join('. '));
-    utterance.lang = language === 'ta' ? 'ta-IN' : language === 'hi' ? 'hi-IN' : 'en-IN';
-    utterance.onstart = () => setVoiceStatus('Reading aloud. The speech voice depends on your device.');
+    const sourceText = utterance.text;
+    // Read the original text in its apparent script; UI language selection does not translate clinical content.
+    utterance.lang = /[\\u0B80-\\u0BFF]/.test(sourceText) ? 'ta-IN' : /[\\u0900-\\u097F]/.test(sourceText) ? 'hi-IN' : 'en-IN';
+    utterance.onstart = () => setVoiceStatus('Reading the original text aloud; this does not translate the clinical content.');
     utterance.onend = () => setVoiceStatus('Read-aloud finished.');
     utterance.onerror = () => setVoiceStatus('A voice for this language may not be available on this device.');
     window.speechSynthesis.speak(utterance);
