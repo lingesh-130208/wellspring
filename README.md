@@ -13,6 +13,15 @@ A hackathon proof of concept for clinician-reviewed pelvic-floor rehabilitation 
 7. The optional still-image review is separate from the live framing feature. The image endpoint does not persist the image and does not score exercise technique or determine safety.
 8. The clinic feedback queue polls every 15 seconds while the clinician workspace is open and the clinic authorization token is active.
 
+## Accessibility and innovation features
+
+- Browser speech recognition can dictate report notes and patient feedback where the browser supports it and microphone permission is granted. Manual typing remains available.
+- Read-aloud controls use the browser speech synthesis engine for clinician-approved patient plans. The accessibility toolbar includes larger text, a high-contrast toggle, and English/Tamil voice-guidance selection.
+- Patient activity is shown as a color-coded timeline of self-reported events (completed, difficulty/discomfort, pain, and other feedback). It is explicitly not a vital-sign display or validated clinical risk score; numeric symptom ratings are patient-reported only.
+- An optional session reminder can trigger an in-app reminder while the page is open, and a browser notification if permission is granted. It is not a medication or emergency reminder and does not run when the browser is closed.
+- Soft depth and frosted-card styling are paired with keyboard focus outlines, responsive layouts, and large tap targets.
+- The camera feature uses MediaPipe Pose Landmarker Lite to estimate visible body landmarks for framing cues. It is an ML vision model, not a pelvic-floor contraction detector or clinical movement assessment.
+
 ## Authentication repair branch
 
 The branch `fix/auth-and-deployment-baseline` adds an application sign-in layer in addition to Vercel deployment protection:
