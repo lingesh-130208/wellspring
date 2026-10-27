@@ -10,7 +10,7 @@ A hackathon proof of concept for clinician-reviewed pelvic-floor rehabilitation 
 4. A clinician must approve a case before publishing.
 5. A clinician assigns each approved case to a configured patient account. The signed-in patient must own that case to view it or submit feedback.
 6. The patient workspace offers browser-based live pose landmarks for visible shoulder/hip framing cues. The model runs in the browser after loading from a CDN; the app does not upload or record the live camera stream. This is not an exercise-correctness or internal muscle-activation detector.
-7. The optional still-image review is separate from the live framing feature. The image endpoint does not persist the image and does not score exercise technique or determine safety.
+7. The optional still-image review uses MediaPipe Pose Landmarker in the browser to estimate visible shoulder/hip framing. The image is not uploaded by this feature. It does not score exercise technique or determine safety.
 8. The clinic feedback queue polls every 15 seconds while the clinician workspace is open and the clinic authorization token is active.
 
 ## Accessibility and innovation features
@@ -43,7 +43,7 @@ The Vercel preview for `fix/auth-and-deployment-baseline` now has the three auth
 - `WELLSPRING_DEMO_ACCOUNTS`: server-side JSON array with at least one patient and one clinician account. Each account needs `id`, `email`, `name`, `role`, `salt`, and `passwordHash`.
 - `CLINIC_ADMIN_TOKEN`: strong server-only token for clinician case actions.
 - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`: required for persistent cases and feedback. These are still missing in the current Vercel project.
-- `GEMINI_API_KEY`: optional; required for actual Gemini report and still-image review calls. This is still missing in the current Vercel project.
+- `GEMINI_API_KEY`: optional; required for Gemini-assisted report organization. It is not required for the on-device MediaPipe camera or still-image framing tools. This key is still missing in the current Vercel project.
 - Live camera framing uses MediaPipe Pose Landmarker in the browser and loads the WASM/model assets from public CDNs. Camera permission and an internet connection are required the first time.
 
 To generate password hashes without putting plaintext passwords in source control:
@@ -55,12 +55,12 @@ Run `supabase/schema.sql` in the intended Supabase project. The schema and actua
 
 ## Verification status
 
-- GitHub Actions `npm install` and `npm run build`: passed on this branch (see the PR checks).
+- GitHub Actions `npm test` and `npm run build`: passed on the latest checked branch commit (see the PR checks).
 - Vercel preview deployment: READY for the latest code available at the time of writing.
 - End-to-end browser login: **not yet verified**; Vercel deployment protection blocked automated content fetch.
 - Storage integration: **not configured**. Case APIs return 503 until server-side Supabase variables are set and `supabase/schema.sql` is applied.
 - Gemini integration: **not configured**; report processing falls back to a clearly labelled local summary until `GEMINI_API_KEY` is set.
-- Live camera model: deployment build passed; camera permission, CDN model download, and on-device behavior still need a hands-on browser test.
+- Live camera and still-image ML model: deployment build passed; camera permission, CDN model download, microphone permissions, speech synthesis, and device reminder behavior still need hands-on browser tests.
 
 ## Security and clinical limitations
 
