@@ -30,15 +30,36 @@ export default async function handler(req:any,res:any) {
    if(!record.clinician_approved) return res.status(403).json({error:'This plan has not been approved by a clinician.'});
    return res.status(200).json({case:record});
   }
+  if(req.method==='POST' && url.searchParams.get('action')==='review-feedback') {
+   if(!clinicAuthorized) return res.status(401).json({error:'Clinic authorization required.'});
+   const body=req.body||{}; const targetCode=String(body.accessCode||'').trim().toUpperCase(); const feedbackId=String(body.feedbackId||'');
+   if(!/^[A-F0-9]{10}$/.test(targetCode) || !feedbackId) return res.status(400).json({error:'Case code and feedback identifier are required.'});
+   const lookup=await fetch(supabaseUrl+'/rest/v1/care_cases?access_code=eq.'+encodeURIComponent(targetCode)+'&select=id,feedback,expires_at&limit=1',{headers:headers()});
+   if(!lookup.ok) return res.status(502).json({error:'Could not verify the case.'});
+   const rows=await lookup.json(); const record=rows[0];
+   if(!record || new Date(record.expires_at).getTime()<Date.now()) return res.status(404).json({error:'No active case found for that code.'});
+   const feedback=Array.isArray(record.feedback)?record.feedback:[]; const index=feedback.findIndex((f:any)=>f.id===feedbackId);
+   if(index<0) return res.status(404).json({error:'Feedback item not found. Refresh the clinic queue.'});
+   feedback[index]={...feedback[index],reviewStatus:'reviewed',reviewDecision:String(body.decision||'reviewed').slice(0,60),clinicianNote:String(body.clinicianNote||'').slice(0,500),reviewedAt:new Date().toISOString()};
+   const saved=await fetch(supabaseUrl+'/rest/v1/care_cases?id=eq.'+record.id,{method:'PATCH',headers:{...headers(),Prefer:'return=minimal'},body:JSON.stringify({feedback,updated_at:new Date().toISOString()})});
+   if(!saved.ok) return res.status(502).json({error:'Review could not be saved.'});
+   return res.status(200).json({ok:true});
+  }
   if(req.method==='POST' && url.searchParams.get('action')==='feedback') {
    if(!/^[A-F0-9]{10}$/.test(accessCode)) return res.status(400).json({error:'A valid access code is required.'});
-   const message=String(req.body?.message||'').trim().slice(0,1500);
-   if(message.length<2) return res.status(400).json({error:'Feedback is required.'});
+   const body=req.body||{};
+   const message=String(body.message||'').trim().slice(0,1000);
+   const category=String(body.category||'general');
+   const allowedCategories=['completed','too_difficult','unable_to_perform','uncomfortable','pain','video_not_helpful','missed','general'];
+   if(!allowedCategories.includes(category)) return res.status(400).json({error:'Choose a valid feedback category.'});
+   const rating=body.symptomRating===null || body.symptomRating===undefined || body.symptomRating==='' ? null : Number(body.symptomRating);
+   if(rating!==null && (!Number.isInteger(rating)||rating<0||rating>10)) return res.status(400).json({error:'Self-reported rating must be from 0 to 10.'});
+   if(message.length<2 && !allowedCategories.includes(category)) return res.status(400).json({error:'Feedback is required.'});
    const lookup=await fetch(supabaseUrl+'/rest/v1/care_cases?access_code=eq.'+encodeURIComponent(accessCode)+'&select=id,feedback,expires_at&limit=1',{headers:headers()});
    if(!lookup.ok) return res.status(502).json({error:'Could not verify the case.'});
    const rows=await lookup.json(); const record=rows[0];
    if(!record || new Date(record.expires_at).getTime()<Date.now()) return res.status(404).json({error:'No active case found for that code.'});
-   const feedback=[...(Array.isArray(record.feedback)?record.feedback:[]),{message,createdAt:new Date().toISOString()}].slice(-30);
+   const feedback=[...(Array.isArray(record.feedback)?record.feedback:[]),{id:randomBytes(8).toString('hex'),exercise:String(body.exercise||'General session').slice(0,120),category,comfort:String(body.comfort||'not_recorded').slice(0,40),symptomRating:rating,message,reviewStatus:'pending',createdAt:new Date().toISOString()}].slice(-100);
    const saved=await fetch(supabaseUrl+'/rest/v1/care_cases?id=eq.'+record.id,{method:'PATCH',headers:{...headers(),Prefer:'return=minimal'},body:JSON.stringify({feedback,updated_at:new Date().toISOString()})});
    if(!saved.ok) return res.status(502).json({error:'Feedback could not be saved.'});
    return res.status(200).json({ok:true});
