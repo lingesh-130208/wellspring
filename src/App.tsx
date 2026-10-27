@@ -48,6 +48,7 @@ export default function App() {
   const [patientEmail, setPatientEmail] = useState('');
   const [clinicianApproved, setClinicianApproved] = useState(false);
   const [patientCase, setPatientCase] = useState<any>(null);
+  const [localDemoCase, setLocalDemoCase] = useState<any>(null);
   const [patientBusy, setPatientBusy] = useState(false);
   const [snapshotFile, setSnapshotFile] = useState<File | null>(null);
   const [frameReview, setFrameReview] = useState<any>(null);
@@ -147,7 +148,7 @@ export default function App() {
     if (!clinicToken.trim()) {
       const demoCode = 'DEMO-' + Math.random().toString(36).slice(2, 8).toUpperCase();
       const demoCase = { id: 'local-demo', access_code: demoCode, patient_label: 'Demo patient', created_at: new Date().toISOString(), clinician_approved: true, report_summary: summary, clinician_plan: plan, video_recommendations: videos, feedback: [] };
-      setClinicCases([demoCase]); setPatientCase(demoCase); setAccessCode(demoCode);
+      setClinicCases([demoCase]); setLocalDemoCase(demoCase); setPatientCase(null); setAccessCode(demoCode);
       setStatus('Presentation demo saved in this browser only. Patient demo code: ' + demoCode + '. This is not saved to the database.'); return;
     }
     setBusy(true);
@@ -170,7 +171,12 @@ export default function App() {
     finally { setClinicDashboardBusy(false); }
   }
   async function reviewFeedback(accessCode:string, feedbackId:string, decision:string, clinicianNote:string) {
-    if (!clinicToken.trim()) { setStatus('Clinic token is required.'); return; }
+    if (!clinicToken.trim() && localDemoCase && accessCode === localDemoCase.access_code) {
+      const updatedFeedback = (localDemoCase.feedback || []).map((f:any) => f.id === feedbackId ? {...f, reviewStatus:'reviewed', reviewDecision:decision, clinicianNote, reviewedAt:new Date().toISOString()} : f);
+      const updatedCase = {...localDemoCase, feedback:updatedFeedback};
+      setLocalDemoCase(updatedCase); setClinicCases([updatedCase]); setStatus('Local demo feedback review recorded in this browser only.'); return;
+    }
+    if (!clinicToken.trim()) { setStatus('Clinic token is required for database-backed cases.'); return; }
     try {
       const r = await fetch('/api/cases?action=review-feedback', {method:'POST', headers:{'Content-Type':'application/json','x-clinic-token':clinicToken}, body:JSON.stringify({accessCode, feedbackId, decision, clinicianNote})});
       const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Could not save review');
@@ -178,8 +184,7 @@ export default function App() {
     } catch(e) { setStatus(e instanceof Error ? e.message : 'Could not save review.'); }
   }
   async function lookupPatient() {
-    if (!clinicToken.trim() && !accessCode.trim() && patientCase) { setStatus('Local presentation demo opened. This case exists only in this browser session.'); return; }
-    if (!clinicToken.trim() && accessCode.trim() && patientCase && accessCode.trim() === patientCase.access_code) { setPatientCase(patientCase); setVideos(Array.isArray(patientCase.video_recommendations) ? patientCase.video_recommendations : []); setStatus('Local presentation demo opened. This case is not stored in the database.'); return; }
+    if (!clinicToken.trim() && localDemoCase && accessCode.trim().toUpperCase() === localDemoCase.access_code) { setPatientCase(localDemoCase); setStatus('Local presentation demo opened. This case exists only in this browser session and is not stored in the database.'); return; }
     if(!accessCode.trim()) { setStatus('Publish a synthetic demo case from Clinic Demo first, or enter a clinic-issued code.'); return; }
     setPatientBusy(true); setPatientCase(null);
     try {
@@ -206,6 +211,12 @@ export default function App() {
   }
   async function submitFeedback() {
     if(!accessCode.trim() || (!feedback.trim() && !feedbackCategory)) { setStatus('Enter a clinic access code and select a feedback category.'); return; }
+    if (!clinicToken.trim() && localDemoCase && patientCase && accessCode.trim().toUpperCase() === localDemoCase.access_code) {
+      const entry = {id:Math.random().toString(36).slice(2,12), exercise:feedbackExercise, category:feedbackCategory, comfort:comfortRating, symptomRating:symptomRating === '' ? null : Number(symptomRating), message:feedback.trim(), reviewStatus:'pending', createdAt:new Date().toISOString()};
+      const updatedCase = {...localDemoCase, feedback:[...(localDemoCase.feedback || []),entry]};
+      setLocalDemoCase(updatedCase); setPatientCase(updatedCase); setClinicCases([updatedCase]); setFeedback(''); setSymptomRating('');
+      setStatus(feedbackCategory === 'pain' ? 'Feedback saved in this browser-only demo. Stop the activity and contact the treating clinician about pain.' : 'Feedback saved in this browser-only demo for clinic review.'); return;
+    }
     try {
       const r=await fetch('/api/cases?action=feedback&code='+encodeURIComponent(accessCode.trim()),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({exercise:feedbackExercise,category:feedbackCategory,comfort:comfortRating,symptomRating:symptomRating || null,message:feedback})});
       const d=await r.json(); if(!r.ok) throw new Error(d.error || 'Feedback failed');
