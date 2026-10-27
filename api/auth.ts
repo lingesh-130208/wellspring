@@ -34,6 +34,13 @@ function parseCookies(header: string | undefined) {
     return i < 0 ? ['', ''] : [part.slice(0, i).trim(), decodeURIComponent(part.slice(i + 1).trim())];
   }).filter(([k]) => !!k));
 }
+export function getConfiguredAccount(id: string): Account | null {
+  const account = accounts().find(a => a.id === id);
+  return account ? publicAccount(account) : null;
+}
+export function getConfiguredPatients(): Account[] {
+  return accounts().filter(a => a.role === 'patient').map(publicAccount);
+}
 function publicAccount(account: DemoAccount): Account {
   return { id: account.id, email: account.email, name: account.name, role: account.role };
 }
@@ -89,6 +96,12 @@ export default async function handler(req: any, res: any) {
   if (req.method === 'GET' && new URL(req.url || '/api/auth', 'http://localhost').searchParams.get('action') === 'me') {
     const user = getSession(req);
     return res.status(200).json({ authenticated: !!user, user });
+  }
+  const action = new URL(req.url || '/api/auth', 'http://localhost').searchParams.get('action');
+  if (req.method === 'GET' && action === 'patients') {
+    const clinician = requireAccountRole(req, res, ['clinician']);
+    if (!clinician) return;
+    return res.status(200).json({ patients: getConfiguredPatients() });
   }
   if (req.method === 'POST' && new URL(req.url || '/api/auth', 'http://localhost').searchParams.get('action') === 'logout') {
     res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; HttpOnly; ${process.env.NODE_ENV === 'production' ? 'Secure; ' : ''}SameSite=Lax; Max-Age=0`);
