@@ -36,3 +36,24 @@
 .patient-card .video-grid{grid-template-columns:repeat(2,minmax(0,1fr));margin-top:18px}
 .patient-card .video-card{text-align:left}.patient-card .video-body p{margin:0 0 8px}
 @media(max-width:650px){.auth-card{padding:25px 21px}.auth-page{padding:14px}.auth-account{margin-left:auto}.account-details{display:none}.patient-card .video-grid{grid-template-columns:1fr}}
+
+
+/* Live camera framing support */
+.live-camera-card{margin:1.5rem 0;padding:1.25rem;border:1px solid #dce9e4;border-radius:1.25rem;background:#f8fcfa;color:#183b32}
+.live-camera-heading{display:flex;align-items:center;gap:.8rem;margin-bottom:.75rem}
+.live-camera-icon{width:2.6rem;height:2.6rem;display:grid;place-items:center;border-radius:.8rem;background:#dff6eb;color:#176b52;flex-shrink:0}
+.live-camera-heading h3{margin:0;font-size:1.08rem}
+.live-camera-heading p{margin:.2rem 0 0;color:#60756e;font-size:.83rem}
+.live-camera-live{margin-left:auto;padding:.35rem .55rem;border-radius:999px;background:#e8f0ec;color:#426357;font-size:.68rem;font-weight:800;letter-spacing:.08em}
+.live-camera-explainer{color:#526a61;font-size:.9rem;line-height:1.6}
+.live-camera-preview{position:relative;overflow:hidden;width:100%;max-width:42rem;aspect-ratio:4/3;margin:1rem auto;background:#102b25;border-radius:1rem}
+.live-camera-preview video,.live-camera-preview canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.live-camera-preview canvas{pointer-events:none}
+.camera-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.7rem;padding:1rem;text-align:center;color:#d4e8df;background:linear-gradient(140deg,#153c31,#244e43)}
+.live-camera-status{margin:.75rem 0;padding:.8rem 1rem;border-radius:.8rem;background:#e8f5ef;color:#225643;font-weight:650;line-height:1.5}
+.live-camera-actions{display:flex;flex-wrap:wrap;align-items:center;gap:.8rem;margin-top:1rem}
+.live-camera-actions>span{display:inline-flex;align-items:center;gap:.35rem;color:#647a71;font-size:.8rem}
+.live-camera-footnote{margin:.8rem 0 0;color:#6b7f77;font-size:.78rem;line-height:1.5}
+.spin-icon{animation:wellspring-spin 1s linear infinite}
+@keyframes wellspring-spin{to{transform:rotate(360deg)}}
+@media(max-width:560px){.live-camera-card{padding:1rem}.live-camera-heading{align-items:flex-start}.live-camera-live{font-size:.6rem}.live-camera-actions .primary-btn,.live-camera-actions .secondary-btn{width:100%;justify-content:center}}
