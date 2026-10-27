@@ -1,6 +1,9 @@
+import { applyRateLimit } from './rate-limit.mjs';
+
 export default async function handler(req:any,res:any) {
   res.setHeader('Cache-Control','no-store');
   if(req.method!=='POST') return res.status(405).json({error:'Method not allowed'});
+  if(!applyRateLimit(req,res,{bucket:'frame',limit:5,windowMs:60_000})) return;
   const apiKey=process.env.GEMINI_API_KEY;
   const requestedModel=process.env.GEMINI_MODEL || 'gemini-3.8-flash';
   const model=/^[a-zA-Z0-9._-]{3,80}$/.test(requestedModel) ? requestedModel : 'gemini-3.8-flash';
@@ -14,6 +17,7 @@ export default async function handler(req:any,res:any) {
     const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+encodeURIComponent(apiKey),{
       method:'POST',
       headers:{'Content-Type':'application/json'},
+      signal:AbortSignal.timeout(20_000),
       body:JSON.stringify({contents:[{parts:[{text:prompt},{inlineData:{mimeType,data:imageData}}]}],generationConfig:{responseMimeType:'application/json',temperature:0.1}})
     });
     if(!r.ok) {
