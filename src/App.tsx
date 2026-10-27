@@ -33,6 +33,10 @@ export default function App() {
   const [accessCode, setAccessCode] = useState('');
   const [feedback, setFeedback] = useState('');
   const [consent, setConsent] = useState(false);
+  const [clinicToken, setClinicToken] = useState('');
+  const [clinicianApproved, setClinicianApproved] = useState(false);
+  const [patientCase, setPatientCase] = useState<any>(null);
+  const [patientBusy, setPatientBusy] = useState(false);
 
   const reportReady = reportText.trim().length > 20;
   const recommendations = useMemo(() => videos.length ? videos : chooseVideos(reportText), [videos, reportText]);
@@ -71,6 +75,36 @@ export default function App() {
     } finally { setBusy(false); }
   }
 
+  async function publishCase() {
+    if (!summary || !plan || !clinicianApproved || !clinicToken.trim()) { setStatus('Enter the clinic token and explicitly confirm clinician approval before publishing.'); return; }
+    setBusy(true);
+    try {
+      const r = await fetch('/api/cases?action=publish', { method:'POST', headers:{'Content-Type':'application/json','x-clinic-token':clinicToken}, body:JSON.stringify({summary,planDraft:plan,videos,clinicianApproved,patientLabel:'Demo patient'}) });
+      const d = await r.json(); if(!r.ok) throw new Error(d.error || 'Publish failed');
+      setStatus('Case published. Patient access code: ' + d.case.access_code);
+    } catch(e) { setStatus(e instanceof Error ? e.message : 'Could not publish case.'); }
+    finally { setBusy(false); }
+  }
+  async function lookupPatient() {
+    if(!accessCode.trim()) { setStatus('Enter the code provided by the clinic.'); return; }
+    setPatientBusy(true); setPatientCase(null);
+    try {
+      const r=await fetch('/api/cases?code='+encodeURIComponent(accessCode.trim()),{cache:'no-store'});
+      const d=await r.json(); if(!r.ok) throw new Error(d.error || 'Lookup failed');
+      setPatientCase(d.case); setVideos(Array.isArray(d.case.video_recommendations)?d.case.video_recommendations:[]);
+      setStatus('Approved clinic case loaded.');
+    } catch(e) { setStatus(e instanceof Error ? e.message : 'Could not load case.'); }
+    finally { setPatientBusy(false); }
+  }
+  async function submitFeedback() {
+    if(!accessCode.trim() || feedback.trim().length<2) { setStatus('Enter a valid clinic access code and feedback.'); return; }
+    try {
+      const r=await fetch('/api/cases?action=feedback&code='+encodeURIComponent(accessCode.trim()),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:feedback})});
+      const d=await r.json(); if(!r.ok) throw new Error(d.error || 'Feedback failed');
+      setFeedback(''); setStatus('Feedback saved for the clinic.');
+    } catch(e) { setStatus(e instanceof Error ? e.message : 'Could not save feedback.'); }
+  }
+
   return <div className="app-shell">
     <header className="topbar">
       <a className="brand" href="#" aria-label="WellSpring home"><span className="brand-mark"><HeartPulse size={22}/></span><span><strong>WellSpring</strong><small>PS13 · connected care</small></span></a>
@@ -101,16 +135,16 @@ export default function App() {
             <button className="primary-btn full" disabled={busy} onClick={processReport}>{busy ? 'Processing…' : 'Analyze report & match resources'} <ArrowRight size={17}/></button>{status && <p className="status-message" role="status">{status}</p>}
           </div>
           <div className="panel results-panel"><div className="panel-title"><span className="step-num">02</span><div><h3>Report-informed review</h3><p>AI output is an assistant, never a decision-maker.</p></div></div>
-            {!summary ? <div className="empty-state"><div className="empty-icon"><ClipboardList size={25}/></div><strong>Your report review will appear here</strong><p>Submit report text to organize documented information and generate questions for the treating clinician.</p><div className="empty-points"><span><CheckCircle2 size={15}/> No automatic diagnosis</span><span><CheckCircle2 size={15}/> Missing information stays missing</span><span><CheckCircle2 size={15}/> Clinician approval required</span></div></div> : <div className="result-content"><div className="result-banner"><CheckCircle2 size={18}/><span>Draft generated · verify every field</span></div><h4>Summary of stated information</h4><p>{summary.summary}</p><h4>Items explicitly mentioned</h4><div className="chips">{(summary.mentioned.length ? summary.mentioned : ['No structured items returned']).map((x,i)=><span key={i}>{x}</span>)}</div><h4>Questions for the treating clinician</h4><ul>{summary.questionsForClinician.map((x,i)=><li key={i}>{x}</li>)}</ul><div className="caution-note"><AlertTriangle size={17}/><span>{summary.caution}</span></div><h4>Clinician-facing plan draft</h4><div className="plan-draft">{plan}</div></div>}
+            {!summary ? <div className="empty-state"><div className="empty-icon"><ClipboardList size={25}/></div><strong>Your report review will appear here</strong><p>Submit report text to organize documented information and generate questions for the treating clinician.</p><div className="empty-points"><span><CheckCircle2 size={15}/> No automatic diagnosis</span><span><CheckCircle2 size={15}/> Missing information stays missing</span><span><CheckCircle2 size={15}/> Clinician approval required</span></div></div> : <div className="result-content"><div className="result-banner"><CheckCircle2 size={18}/><span>Draft generated · verify every field</span></div><h4>Summary of stated information</h4><p>{summary.summary}</p><h4>Items explicitly mentioned</h4><div className="chips">{(summary.mentioned.length ? summary.mentioned : ['No structured items returned']).map((x,i)=><span key={i}>{x}</span>)}</div><h4>Questions for the treating clinician</h4><ul>{summary.questionsForClinician.map((x,i)=><li key={i}>{x}</li>)}</ul><div className="caution-note"><AlertTriangle size={17}/><span>{summary.caution}</span></div><h4>Clinician-facing plan draft</h4><div className="plan-draft">{plan}</div><label className="token-field">Clinic authorization token<input type="password" value={clinicToken} onChange={e=>setClinicToken(e.target.value)} placeholder="Set CLINIC_ADMIN_TOKEN in deployment settings" autoComplete="off"/></label><label className="consent approval-check"><input type="checkbox" checked={clinicianApproved} onChange={e=>setClinicianApproved(e.target.checked)}/><span>I am the treating clinician or authorized reviewer and have reviewed and approved this plan for this demo case.</span></label><button className="primary-btn full" onClick={publishCase} disabled={busy || !clinicianApproved}>Publish approved case & create access code <ArrowRight size={17}/></button></div>}
           </div>
-        </div> : <div className="patient-card panel"><div className="empty-icon"><HeartPulse size={25}/></div><h3>Access your clinic-approved plan</h3><p>Patient lookup will become active when secure database storage and clinic-issued access codes are configured. This preview does not look up or expose patient records yet.</p><div className="code-row"><input value={accessCode} onChange={e=>setAccessCode(e.target.value)} placeholder="Clinic-issued access code"/><button className="primary-btn" onClick={()=>setStatus('Patient lookup is not connected yet. No record was retrieved.')}>Find my plan <ArrowRight size={16}/></button></div>{status && <p className="status-message">{status}</p>}</div>}
+        </div> : <div className="patient-card panel"><div className="empty-icon"><HeartPulse size={25}/></div><h3>Access your clinic-approved plan</h3><p>Enter the code supplied by your clinic. Only clinician-approved demo cases can be opened.</p><div className="code-row"><input value={accessCode} onChange={e=>setAccessCode(e.target.value)} placeholder="Clinic-issued access code"/><button className="primary-btn" disabled={patientBusy} onClick={lookupPatient}>{patientBusy?'Looking up…':'Find my plan'} <ArrowRight size={16}/></button></div>{patientCase && <div className="patient-result"><h4>Approved care information</h4><p>{patientCase.report_summary?.summary || 'See the summary provided by your clinic.'}</p><h4>Clinician-approved plan</h4><div className="plan-draft">{patientCase.clinician_plan}</div><h4>Learning resources</h4><p>Report-matched resources appear in the Learning Resources section below.</p></div>}{status && <p className="status-message">{status}</p>}</div>}
       </section>
 
       <section className="resources-section" id="resources"><div className="section-heading"><div><div className="eyebrow">PERSONALIZED LEARNING</div><h2>Helpful videos, chosen from the report.</h2><p>Topics are matched to words in the submitted report. Videos are optional educational resources—not treatment instructions.</p></div><span className="resource-count"><BookOpen size={17}/> REPORT-MATCHED</span></div>
         <div className="video-grid">{recommendations.map((v,i)=><article className="video-card" key={v.title}><div className={'video-art art-'+i}><div className="video-play"><PlayCircle size={30}/></div><span className="video-label">EDUCATIONAL RESOURCE</span></div><div className="video-body"><div className="video-source">{v.source}</div><h3>{v.title}</h3><p>{v.reason}</p><a href={v.url} target="_blank" rel="noreferrer">Find and play video <ArrowRight size={15}/></a><small>Open the video and confirm it is appropriate with the treating clinician before following exercises.</small></div></article>)}</div>
       </section>
 
-      <section className="feedback-section"><div className="feedback-copy"><div className="eyebrow">CLOSE THE LOOP</div><h2>Care should be a conversation.</h2><p>Patient session feedback can help the clinic understand how the person felt and whether a follow-up is needed. It cannot diagnose complications.</p></div><div className="feedback-form panel"><label htmlFor="feedback">Session feedback</label><textarea id="feedback" value={feedback} onChange={e=>setFeedback(e.target.value)} placeholder="Example: I felt comfortable / I need help with…"/><button className="secondary-btn" onClick={()=>setStatus('Feedback preview only: it has not been sent or saved because patient database services are not configured.')}>Preview feedback <ArrowRight size={16}/></button><small>Feedback is not transmitted in this prototype until the backend is configured.</small></div></section>
+      <section className="feedback-section"><div className="feedback-copy"><div className="eyebrow">CLOSE THE LOOP</div><h2>Care should be a conversation.</h2><p>Patient session feedback can help the clinic understand how the person felt and whether a follow-up is needed. It cannot diagnose complications.</p></div><div className="feedback-form panel"><label htmlFor="feedback">Session feedback</label><textarea id="feedback" value={feedback} onChange={e=>setFeedback(e.target.value)} placeholder="Example: I felt comfortable / I need help with…"/><button className="secondary-btn" onClick={submitFeedback}>Send feedback to clinic <ArrowRight size={16}/></button><small>Feedback is saved only when the database is configured and a valid clinic-issued access code is provided.</small></div></section>
 
       <section className="safety-section" id="safety"><div className="safety-icon"><ShieldCheck size={24}/></div><div><h3>Safety comes before automation.</h3><p>This is a hackathon proof of concept, not a validated medical device or production clinical-record system. No video or exercise is automatically prescribed. A qualified clinician must review the original report, check contraindications and approve any individualized plan. ECG or glucose readings alone do not establish exercise clearance. Do not use real identifiable patient data in this demo.</p></div></section>
     </main>
