@@ -1,4 +1,5 @@
 import { localSummary, matchVideos } from './report-logic.mjs';
+import { applyRateLimit } from './rate-limit.mjs';
 
 function fallbackPayload(text:string, reason:'not_configured'|'quota'|'provider_error') {
   const message = reason === 'not_configured'
@@ -19,6 +20,7 @@ function fallbackPayload(text:string, reason:'not_configured'|'quota'|'provider_
 export default async function handler(req:any,res:any) {
   res.setHeader('Cache-Control','no-store');
   if(req.method!=='POST') return res.status(405).json({error:'Method not allowed'});
+  if(!applyRateLimit(req,res,{bucket:'report',limit:12,windowMs:60_000})) return;
   const reportText=typeof req.body?.reportText==='string'?req.body.reportText.slice(0,30000):'';
   if(reportText.trim().length<20) return res.status(400).json({error:'Provide at least 20 characters of report text.'});
   const apiKey=process.env.GEMINI_API_KEY;
@@ -30,6 +32,7 @@ export default async function handler(req:any,res:any) {
     const ai=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+encodeURIComponent(apiKey),{
       method:'POST',
       headers:{'Content-Type':'application/json'},
+      signal:AbortSignal.timeout(15_000),
       body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:'application/json',temperature:0.1}})
     });
     if(!ai.ok) {
