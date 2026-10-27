@@ -18,9 +18,14 @@ export default async function handler(req:any,res:any) {
    if(!clinician) return;
 
  }
- if(action==='feedback' || (req.method==='GET' && accessCode)) {
-   if(!session) return res.status(401).json({error:'Sign in is required before accessing patient care data.'});
+ if(action==='feedback') {
+   if (!requireAccountRole(req,res,['patient'])) return;
  }
+ if(req.method==='GET' && accessCode) {
+   if (!session) return res.status(401).json({error:'Sign in is required before accessing patient care data.'});
+   if (session.role !== 'patient' && session.role !== 'clinician') return res.status(403).json({error:'Your account cannot access this case.'});
+ }
+ if (action === 'feedback' && !supabaseUrl) return res.status(503).json({error:'Case storage is not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Vercel.'});
  if(!supabaseUrl || !serviceKey) return res.status(503).json({error:'Case storage is not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Vercel.'});
  try {
   if(req.method==='POST' && url.searchParams.get('action')==='publish') {
