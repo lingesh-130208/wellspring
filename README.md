@@ -31,7 +31,7 @@ Important: language selection translates supported interface labels, not the cli
 
 ## AI and ML status
 
-- When `GEMINI_API_KEY` is configured and Gemini responds successfully, `POST /api/report` asks Gemini to organize documented report text into a bounded JSON structure. The output is an assistive draft, not diagnosis, prescription, exercise clearance, or an individualized exercise plan.
+- When `GEMINI_API_KEY` is configured and Gemini responds successfully, `POST /api/report` asks the configured Gemini model (default `gemini-3.8-flash`) to organize documented report text into a bounded JSON structure. The output is an assistive draft, not diagnosis, prescription, exercise clearance, or an individualized exercise plan.
 - Missing keys, quota exhaustion (HTTP 429), malformed responses or provider errors return an explicitly labelled local fallback. The API does not pretend an AI call succeeded.
 - The fallback checks selected keywords to surface *terms appearing in the text*. This is deterministic keyword matching, **not a trained ML model**.
 - The frame endpoint can describe visible image framing only when the AI provider is available. It does not observe internal pelvic-floor muscles, score contraction quality, or determine exercise safety.
@@ -53,6 +53,7 @@ npm run dev
 Set these server-only environment variables in the hosting platform:
 
 - `GEMINI_API_KEY` — optional; enables AI-assisted report organization and still-frame observations.
+- `GEMINI_MODEL` — optional model override; defaults to `gemini-3.8-flash`. Keep the model ID current with the official Gemini API model list.
 - `SUPABASE_URL` — Supabase project URL.
 - `SUPABASE_SERVICE_ROLE_KEY` — server-only key; never expose it in browser environment variables.
 - `CLINIC_ADMIN_TOKEN` — strong random token for the demo clinic endpoints.
