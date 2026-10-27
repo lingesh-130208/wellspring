@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "auth:validate": "node scripts/validate-auth-config.mjs",
+    "auth:accounts": "node scripts/generate-demo-accounts.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "4.4.1",
