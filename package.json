@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "auth:validate": "node scripts/validate-auth-config.mjs",
     "auth:accounts": "node scripts/generate-demo-accounts.mjs",
-    "test": "node --test"
+    "test": "node scripts/validate-auth-config.mjs --self-test"
   },
   "dependencies": {
     "@vitejs/plugin-react": "4.4.1",
