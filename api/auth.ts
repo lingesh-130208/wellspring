@@ -72,7 +72,7 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({ authenticated: !!user, user });
   }
   if (req.method === 'POST' && new URL(req.url || '/api/auth', 'http://localhost').searchParams.get('action') === 'logout') {
-    res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`);
+    res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; HttpOnly; ${process.env.NODE_ENV === 'production' ? 'Secure; ' : ''}SameSite=Lax; Max-Age=0`);
     return res.status(200).json({ ok: true });
   }
   if (req.method !== 'POST' || new URL(req.url || '/api/auth', 'http://localhost').searchParams.get('action') !== 'login')
@@ -85,6 +85,6 @@ export default async function handler(req: any, res: any) {
   const account = accounts().find(a => a.email.toLowerCase() === email);
   if (!account || !verifyPassword(password, account))
     return res.status(401).json({ error: 'Email or password is incorrect.' });
-  res.setHeader('Set-Cookie', `${COOKIE}=${issueSession(account)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_SECONDS}`);
+  res.setHeader('Set-Cookie', `${COOKIE}=${issueSession(account)}; Path=/; HttpOnly; ${process.env.NODE_ENV === 'production' ? 'Secure; ' : ''}SameSite=Lax; Max-Age=${SESSION_SECONDS}`);
   return res.status(200).json({ user: publicAccount(account) });
 }
