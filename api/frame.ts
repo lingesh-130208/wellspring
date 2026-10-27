@@ -2,6 +2,8 @@ export default async function handler(req:any,res:any) {
   res.setHeader('Cache-Control','no-store');
   if(req.method!=='POST') return res.status(405).json({error:'Method not allowed'});
   const apiKey=process.env.GEMINI_API_KEY;
+  const requestedModel=process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+  const model=/^[a-zA-Z0-9._-]{3,80}$/.test(requestedModel) ? requestedModel : 'gemini-3.8-flash';
   if(!apiKey) return res.status(503).json({error:'Frame review needs a configured AI provider.'});
   const mimeType=String(req.body?.mimeType||'');
   const imageData=String(req.body?.imageBase64||'');
@@ -9,7 +11,7 @@ export default async function handler(req:any,res:any) {
   if(!imageData || imageData.length>5_500_000) return res.status(413).json({error:'Image is missing or too large. Choose a smaller image under about 4 MB.'});
   try {
     const prompt='You are a cautious assistant for a rehabilitation hackathon prototype. Analyze ONE still image only. Do not identify the person, infer age or diagnosis, claim exercise correctness, or make clinical judgments. Report only whether the image is clear enough for a clinician to review and any obvious camera/framing issue. Do not claim pelvic-floor muscle activity is visible. Return JSON with keys imageQuality (string), visibleObservation (string), nextStep (string), caution (string).';
-    const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key='+encodeURIComponent(apiKey),{
+    const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+encodeURIComponent(apiKey),{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({contents:[{parts:[{text:prompt},{inlineData:{mimeType,data:imageData}}]}],generationConfig:{responseMimeType:'application/json',temperature:0.1}})
