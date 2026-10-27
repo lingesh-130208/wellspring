@@ -160,7 +160,7 @@ export default function App() {
     finally { setFrameBusy(false); }
   }
   async function submitFeedback() {
-    if(!accessCode.trim() || feedback.trim().length<2) { setStatus('Enter a valid clinic access code and feedback.'); return; }
+    if(!accessCode.trim() || (!feedback.trim() && !feedbackCategory)) { setStatus('Enter a clinic access code and select a feedback category.'); return; }
     try {
       const r=await fetch('/api/cases?action=feedback&code='+encodeURIComponent(accessCode.trim()),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({exercise:feedbackExercise,category:feedbackCategory,comfort:comfortRating,symptomRating:symptomRating || null,message:feedback})});
       const d=await r.json(); if(!r.ok) throw new Error(d.error || 'Feedback failed');
