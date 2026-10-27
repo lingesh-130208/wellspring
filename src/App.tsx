@@ -6,9 +6,6 @@ import ReadAloudButton from './ReadAloudButton';
 import SessionReminder from './SessionReminder';
 import { reviewStillImageLocally } from './localFrameReview';
 const LiveCameraCoach = lazy(() => import('./LiveCameraCoach'));
-import * as pdfjsLib from 'pdfjs-dist';
-import mammoth from 'mammoth/mammoth.browser';
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 import { Activity, ArrowRight, BookOpen, CheckCircle2, ClipboardList, FileText, HeartPulse, PlayCircle, ShieldCheck, Upload, Video, Users, AlertTriangle } from 'lucide-react';
 
 type ReportSummary = { summary: string; mentioned: string[]; questionsForClinician: string[]; caution: string };
@@ -77,6 +74,8 @@ export default function App() {
       if (file.type === 'text/plain' || /\.txt$/i.test(file.name)) {
         setReportText(await file.text());
       } else if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+        const pdfjsLib = await import('pdfjs-dist');
+        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
         const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
         const pages: string[] = [];
         for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
@@ -88,7 +87,8 @@ export default function App() {
         if (!extracted) { setStatus('This PDF appears scanned or contains no selectable text. OCR is not enabled yet; paste a clinician-verified transcription instead.'); return; }
         setReportText(extracted);
       } else if (/\.docx$/i.test(file.name) || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-        const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+        const mammothModule = await import('mammoth/mammoth.browser');
+        const result = await mammothModule.default.extractRawText({ arrayBuffer: await file.arrayBuffer() });
         setReportText(result.value.trim());
       } else {
         setStatus('Please use TXT, text-based PDF, or DOCX. Scanned PDFs require OCR and human verification.');
