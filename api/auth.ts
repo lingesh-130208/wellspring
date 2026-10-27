@@ -65,6 +65,20 @@ export function requireRole(req: any, res: any, roles: Account['role'][]): Accou
   if (!roles.includes(user.role)) { res.status(403).json({ error: 'Your account does not have access to this feature.' }); return null; }
   return user;
 }
+
+export function requireAccountRole(req: any, res: any, roles: Account['role'][]): Account | null {
+  const user = requireRole(req, res, roles);
+  if (!user) return null;
+  if (user.role === 'clinician' && process.env.CLINIC_ADMIN_TOKEN) {
+    const token = req.headers?.['x-clinic-token'];
+    if (typeof token !== 'string' || !safeEqual(token, process.env.CLINIC_ADMIN_TOKEN)) {
+      res.status(401).json({ error: 'Clinic authorization is missing or invalid.' });
+      return null;
+    }
+  }
+  return user;
+}
+
 export default async function handler(req: any, res: any) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method === 'GET' && new URL(req.url || '/api/auth', 'http://localhost').searchParams.get('action') === 'me') {
