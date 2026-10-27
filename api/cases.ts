@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { getSession, requireRole } from './auth';
+import { getSession, requireAccountRole } from './auth';
 const supabaseUrl = process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const clinicToken = process.env.CLINIC_ADMIN_TOKEN;
@@ -10,13 +10,13 @@ export default async function handler(req:any,res:any) {
  const url=new URL(req.url||'/api/cases','http://localhost');
  const accessCode=(url.searchParams.get('code')||'').trim().toUpperCase();
  const action=url.searchParams.get('action')||'';
- const clinicAuthorized=!!clinicToken && req.headers['x-clinic-token']===clinicToken;
+ const clinicAuthorized=!!clinicToken && typeof req.headers['x-clinic-token']==='string' && req.headers['x-clinic-token']===clinicToken;
  const session=getSession(req);
  // Clinic operations require an authenticated clinician account. The legacy shared token is not accepted as a substitute for login.
  if(['publish','list','review-feedback'].includes(action)) {
-   const clinician=requireRole(req,res,['clinician']);
+   const clinician=requireAccountRole(req,res,['clinician']);
    if(!clinician) return;
-   if(!clinicToken || !clinicAuthorized) return res.status(401).json({error:'Clinic authorization is missing or invalid. Sign in and configure the clinic token.'});
+
  }
  if(action==='feedback' || (req.method==='GET' && accessCode)) {
    if(!session) return res.status(401).json({error:'Sign in is required before accessing patient care data.'});
