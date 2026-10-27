@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AuthHeader, useAuth } from './auth';
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth/mammoth.browser';
@@ -43,6 +43,8 @@ export default function App() {
   const [symptomRating, setSymptomRating] = useState('');
   const [clinicCases, setClinicCases] = useState<any[]>([]);
   const [clinicDashboardBusy, setClinicDashboardBusy] = useState(false);
+  const [patientAccounts, setPatientAccounts] = useState<{id:string;name:string;email:string}[]>([]);
+  const [selectedPatientId, setSelectedPatientId] = useState('');
   const [consent, setConsent] = useState(false);
   const [clinicToken, setClinicToken] = useState('');
   const [clinicianApproved, setClinicianApproved] = useState(false);
@@ -111,23 +113,40 @@ export default function App() {
     if (!summary || !plan || !clinicianApproved || !clinicToken.trim()) { setStatus('Enter the clinic token and explicitly confirm clinician approval before publishing.'); return; }
     setBusy(true);
     try {
-      const r = await fetch('/api/cases?action=publish', { method:'POST', headers:{'Content-Type':'application/json','x-clinic-token':clinicToken}, body:JSON.stringify({summary,planDraft:plan,videos,clinicianApproved,patientLabel:'Demo patient'}) });
+      const r = await fetch('/api/cases?action=publish', { method:'POST', headers:{'Content-Type':'application/json','x-clinic-token':clinicToken}, body:JSON.stringify({summary,planDraft:plan,videos,clinicianApproved,patientAccountId:selectedPatientId,patientLabel:patientAccounts.find(p=>p.id===selectedPatientId)?.name || 'Demo patient'}) });
       const d = await r.json(); if(!r.ok) throw new Error(d.error || 'Publish failed');
       setStatus('Case published. Patient access code: ' + d.case.access_code + '. Share this code only with the intended demo patient.');
       await loadClinicCases();
     } catch(e) { setStatus(e instanceof Error ? e.message : 'Could not publish case.'); }
     finally { setBusy(false); }
   }
-  async function loadClinicCases() {
-    if (!clinicToken.trim()) { setStatus('Enter the clinic authorization token first.'); return; }
-    setClinicDashboardBusy(true);
+  async function loadClinicCases(silent = false) {
+    if (!clinicToken.trim()) { if (!silent) setStatus('Enter the clinic authorization token first.'); return; }
+    if (!silent) setClinicDashboardBusy(true);
     try {
       const r = await fetch('/api/cases?action=list', {headers:{'x-clinic-token':clinicToken}, cache:'no-store'});
       const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Could not load clinic dashboard');
       setClinicCases(Array.isArray(d.cases) ? d.cases : []);
-    } catch(e) { setStatus(e instanceof Error ? e.message : 'Clinic dashboard unavailable.'); }
-    finally { setClinicDashboardBusy(false); }
+      if (!silent) {
+        try {
+          const pr = await fetch('/api/auth?action=patients', {headers:{'x-clinic-token':clinicToken}, cache:'no-store'});
+          const pd = await pr.json();
+          if (!pr.ok) throw new Error(pd.error || 'Could not load patient accounts');
+          const list = Array.isArray(pd.patients) ? pd.patients : [];
+          setPatientAccounts(list);
+          setSelectedPatientId(current => current && list.some((p:any) => p.id === current) ? current : (list[0]?.id || ''));
+        } catch {
+          setStatus('Cases loaded, but patient assignment could not be refreshed. Check the configured patient accounts.');
+        }
+      }
+    } catch(e) { if (!silent) setStatus(e instanceof Error ? e.message : 'Clinic dashboard unavailable.'); }
+    finally { if (!silent) setClinicDashboardBusy(false); }
   }
+  useEffect(() => {
+    if (role !== 'clinician' || !clinicToken.trim()) return;
+    const timer = window.setInterval(() => { void loadClinicCases(true); }, 15000);
+    return () => window.clearInterval(timer);
+  }, [role, clinicToken]);
   async function reviewFeedback(accessCode:string, feedbackId:string, decision:string, clinicianNote:string) {
     if (!clinicToken.trim()) { setStatus('Clinic token is required.'); return; }
     try {
@@ -201,13 +220,13 @@ export default function App() {
             <button className="primary-btn full" disabled={busy} onClick={processReport}>{busy ? 'Processing…' : 'Analyze report & match resources'} <ArrowRight size={17}/></button>{status && <p className="status-message" role="status">{status}</p>}
           </div>
           <div className="panel results-panel"><div className="panel-title"><span className="step-num">02</span><div><h3>Report-informed review</h3><p>AI output is an assistant, never a decision-maker.</p></div></div>
-            {!summary ? <div className="empty-state"><div className="empty-icon"><ClipboardList size={25}/></div><strong>Your report review will appear here</strong><p>Submit report text to organize documented information and generate questions for the treating clinician.</p><div className="empty-points"><span><CheckCircle2 size={15}/> No automatic diagnosis</span><span><CheckCircle2 size={15}/> Missing information stays missing</span><span><CheckCircle2 size={15}/> Clinician approval required</span></div></div> : <div className="result-content"><div className="result-banner"><CheckCircle2 size={18}/><span>Draft generated · verify every field</span></div><h4>Summary of stated information</h4><p>{summary.summary}</p><h4>Items explicitly mentioned</h4><div className="chips">{(summary.mentioned.length ? summary.mentioned : ['No structured items returned']).map((x,i)=><span key={i}>{x}</span>)}</div><h4>Questions for the treating clinician</h4><ul>{summary.questionsForClinician.map((x,i)=><li key={i}>{x}</li>)}</ul><div className="caution-note"><AlertTriangle size={17}/><span>{summary.caution}</span></div><h4>Clinician-facing plan draft</h4><div className="plan-draft">{plan}</div><label className="token-field">Clinic authorization token<input type="password" value={clinicToken} onChange={e=>setClinicToken(e.target.value)} placeholder="Set CLINIC_ADMIN_TOKEN in deployment settings" autoComplete="off"/></label><label className="consent approval-check"><input type="checkbox" checked={clinicianApproved} onChange={e=>setClinicianApproved(e.target.checked)}/><span>I am the treating clinician or authorized reviewer and have reviewed and approved this plan for this demo case.</span></label><button className="primary-btn full" onClick={publishCase} disabled={busy || !clinicianApproved}>Publish approved case & create access code <ArrowRight size={17}/></button></div>}
+            {!summary ? <div className="empty-state"><div className="empty-icon"><ClipboardList size={25}/></div><strong>Your report review will appear here</strong><p>Submit report text to organize documented information and generate questions for the treating clinician.</p><div className="empty-points"><span><CheckCircle2 size={15}/> No automatic diagnosis</span><span><CheckCircle2 size={15}/> Missing information stays missing</span><span><CheckCircle2 size={15}/> Clinician approval required</span></div></div> : <div className="result-content"><div className="result-banner"><CheckCircle2 size={18}/><span>Draft generated · verify every field</span></div><h4>Summary of stated information</h4><p>{summary.summary}</p><h4>Items explicitly mentioned</h4><div className="chips">{(summary.mentioned.length ? summary.mentioned : ['No structured items returned']).map((x,i)=><span key={i}>{x}</span>)}</div><h4>Questions for the treating clinician</h4><ul>{summary.questionsForClinician.map((x,i)=><li key={i}>{x}</li>)}</ul><div className="caution-note"><AlertTriangle size={17}/><span>{summary.caution}</span></div><h4>Clinician-facing plan draft</h4><div className="plan-draft">{plan}</div><label className="token-field">Clinic authorization token<input type="password" value={clinicToken} onChange={e=>setClinicToken(e.target.value)} placeholder="Set CLINIC_ADMIN_TOKEN in deployment settings" autoComplete="off"/></label><label className="token-field">Assign approved case to patient<select value={selectedPatientId} onChange={e=>setSelectedPatientId(e.target.value)} required><option value="">Refresh clinic queue to load patient accounts</option>{patientAccounts.map(p=><option key={p.id} value={p.id}>{p.name} · {p.email}</option>)}</select></label><label className="consent approval-check"><input type="checkbox" checked={clinicianApproved} onChange={e=>setClinicianApproved(e.target.checked)}/><span>I am the treating clinician or authorized reviewer and have reviewed and approved this plan for this demo case.</span></label><button className="primary-btn full" onClick={publishCase} disabled={busy || !clinicianApproved || !selectedPatientId}>Publish approved case & create access code <ArrowRight size={17}/></button></div>}
           </div>
         </div>
       </section>
 
       <section className="workspace-section">
-        <div className="section-heading"><div><div className="eyebrow">CLINIC REVIEW QUEUE</div><h2>Hear the patient. Review before changing the plan.</h2><p>Load saved demo cases to see structured feedback. Marking feedback reviewed records a decision; it does not edit or prescribe exercises.</p></div><button className="secondary-btn" onClick={loadClinicCases} disabled={clinicDashboardBusy}>{clinicDashboardBusy?'Loading…':'Refresh clinic queue'}</button></div>
+        <div className="section-heading"><div><div className="eyebrow">CLINIC REVIEW QUEUE</div><h2>Hear the patient. Review before changing the plan.</h2><p>Load saved demo cases to see structured feedback. The queue auto-refreshes every 15 seconds while the clinic token is active. Marking feedback reviewed records a decision; it does not edit or prescribe exercises.</p></div><button className="secondary-btn" onClick={loadClinicCases} disabled={clinicDashboardBusy}>{clinicDashboardBusy?'Loading…':'Refresh clinic queue'}</button></div>
         <div className="dashboard-stats"><div className="panel"><strong>{clinicCases.length}</strong><span>Saved cases</span></div><div className="panel"><strong>{pendingFeedback.length}</strong><span>Feedback awaiting review</span></div><div className="panel"><strong>{clinicCases.reduce((n:number,c:any)=>n+(Array.isArray(c.feedback)?c.feedback.filter((f:any)=>f.category==='completed').length:0),0)}</strong><span>Reported completions</span></div></div>
         {clinicCases.length===0 ? <div className="no-videos"><strong>No cases loaded yet</strong><p>Refresh the queue after signing in and configuring server-side storage.</p></div> : <div className="clinic-case-list">{clinicCases.map((c:any)=><article className="panel clinic-case" key={c.id}><div className="case-heading"><div><strong>{c.patient_label || 'Demo patient'}</strong><small>Code {c.access_code} · {new Date(c.created_at).toLocaleDateString()}</small></div><span>{c.clinician_approved?'Clinician approved':'Needs approval'}</span></div><p>{c.report_summary?.summary || 'Summary not available'}</p><h4>Patient feedback</h4>{(!Array.isArray(c.feedback)||c.feedback.length===0) ? <p>No feedback yet.</p> : c.feedback.map((f:any,i:number)=><div className="feedback-entry" key={f.id || i}><div><strong>{String(f.category||'general').replaceAll('_',' ')} · {String(f.exercise||'General session')}</strong><small>{f.createdAt ? new Date(f.createdAt).toLocaleString() : ''} · Comfort: {f.comfort||'not recorded'}{f.symptomRating!==null && f.symptomRating!==undefined ? ' · Self-reported rating: '+f.symptomRating+'/10' : ''}</small><p>{f.message || 'No additional note.'}</p>{f.clinicianNote && <p><b>Clinician note:</b> {f.clinicianNote}</p>}</div>{f.reviewStatus==='reviewed' ? <span>Reviewed: {f.reviewDecision}</span> : <div className="review-actions"><button onClick={()=>reviewFeedback(c.access_code,f.id,'reviewed_no_change','Reviewed; no plan change recorded.')}>Review · no change</button><button onClick={()=>reviewFeedback(c.access_code,f.id,'follow_up_needed','Follow-up needed; clinician to contact patient.')}>Flag follow-up</button></div>}</div>)}</article>)}</div>}
         {status && <p className="status-message" role="status">{status}</p>}
