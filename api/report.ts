@@ -1,7 +1,7 @@
-type VideoPick = { title: string; reason: string; url: string; source: string };
+type VideoPick = { title: string; reason: string; url: string; source: string; videoId?: string };
 const library: VideoPick[] = [
-  { title: 'Pelvic floor muscle exercises: a gentle introduction', reason: 'General education about pelvic-floor muscles.', url: 'https://www.youtube.com/results?search_query=NHS+pelvic+floor+muscle+exercises+women', source: 'NHS educational video search' },
-  { title: 'Bladder health and pelvic-floor physiotherapy', reason: 'Education on bladder symptoms and when to seek physiotherapy support.', url: 'https://www.youtube.com/results?search_query=pelvic+floor+physiotherapy+bladder+health+women+NHS', source: 'NHS / physiotherapy educational search' },
+  { title: 'How to do pelvic floor exercises | NHS', reason: 'An NHS physiotherapist explains pelvic-floor exercises. Watch only if the treating clinician confirms this education is suitable.', url: 'https://www.youtube.com/watch?v=JFJtUtKQCuM', videoId: 'JFJtUtKQCuM', source: 'NHS · verified educational video' },
+  { title: 'Bladder health and pelvic-floor physiotherapy', reason: 'Find clinician-produced education related to bladder symptoms; the clinic should confirm which resource fits the report.', url: 'https://www.youtube.com/results?search_query=site%3Ayoutube.com+NHS+bladder+health+pelvic+floor+physiotherapy', source: 'NHS / physiotherapy educational search' },
   { title: 'Safe movement for older adults', reason: 'Gentle mobility education; only use movements cleared by the treating clinician.', url: 'https://www.youtube.com/results?search_query=NHS+safe+gentle+movement+older+adults', source: 'NHS educational video search' },
   { title: 'Pelvic health after surgery: clinician-led guidance', reason: 'For reports mentioning surgery; confirm suitability with the treating clinician first.', url: 'https://www.youtube.com/results?search_query=pelvic+floor+physiotherapist+after+surgery+guidance', source: 'Pelvic-health physiotherapy educational search' }
 ];
