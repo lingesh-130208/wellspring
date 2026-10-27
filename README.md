@@ -36,6 +36,7 @@ Important: language selection translates supported interface labels, not the cli
 - The fallback checks selected keywords to surface *terms appearing in the text*. This is deterministic keyword matching, **not a trained ML model**.
 - The frame endpoint can describe visible image framing only when the AI provider is available. It does not observe internal pelvic-floor muscles, score contraction quality, or determine exercise safety.
 - No real EMG acquisition pipeline, sensor calibration, labeled clinical dataset, trained classification model, or external validation is included in this repository. Do not describe synthetic/illustrative signals as measured patient data.
+- The optional MediaPipe Pose Landmarker uses a real trained computer-vision model to detect visible body landmarks in a still image. It is not trained to detect pelvic-floor contractions, diagnose, score exercise correctness, or establish safety. Image inference occurs in-browser; model/WASM assets load from Google-hosted CDN/model URLs, and MediaPipe may send usage metrics. The app discloses this before use.
 
 ## Local setup
 
