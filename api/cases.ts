@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { applyRateLimit } from './rate-limit.mjs';
 const supabaseUrl = process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const clinicToken = process.env.CLINIC_ADMIN_TOKEN;
