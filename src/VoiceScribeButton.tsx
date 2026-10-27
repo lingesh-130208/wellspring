@@ -3,7 +3,7 @@ import { Mic, MicOff } from 'lucide-react';
 
 type Props = { onTranscript: (text: string) => void; language?: 'en-IN' | 'ta-IN'; label?: string };
 
-export default function VoiceScribeButton({ onTranscript, language = 'en-IN', label = 'Dictate note' }: Props) {
+export default function VoiceScribeButton({ onTranscript, language, label = 'Dictate note' }: Props) {
   const recognitionRef = useRef<any>(null);
   const [listening, setListening] = useState(false);
   const [message, setMessage] = useState('');
@@ -24,7 +24,7 @@ export default function VoiceScribeButton({ onTranscript, language = 'en-IN', la
     }
     try {
       const recognition = new SpeechRecognition();
-      recognition.lang = language;
+      recognition.lang = language || (document.documentElement.lang === 'ta' ? 'ta-IN' : 'en-IN');
       recognition.continuous = true;
       recognition.interimResults = false;
       recognition.maxAlternatives = 1;
