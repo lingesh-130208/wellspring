@@ -7,6 +7,7 @@ export default function VoiceScribeButton({ onTranscript, language, label = 'Dic
   const recognitionRef = useRef<any>(null);
   const [listening, setListening] = useState(false);
   const [message, setMessage] = useState('');
+  const tamil = (language || (document.documentElement.lang === 'ta' ? 'ta-IN' : 'en-IN')) === 'ta-IN';
   useEffect(() => () => { try { recognitionRef.current?.stop(); } catch { /* already stopped */ } }, []);
 
   function toggle() {
@@ -51,9 +52,10 @@ export default function VoiceScribeButton({ onTranscript, language, label = 'Dic
 
   return <span className="voice-scribe-wrap">
     <button type="button" className={listening ? 'voice-scribe is-listening' : 'voice-scribe'} onClick={toggle} aria-pressed={listening}>
-      {listening ? <MicOff size={16}/> : <Mic size={16}/>} {listening ? 'Stop dictation' : label}
+      {listening ? <MicOff size={16}/> : <Mic size={16}/>} {listening ? (tamil ? 'நிறுத்து' : 'Stop dictation') : (tamil ? 'குரல் மூலம் பதிவு' : label)}
     </button>
     {listening && <span className="voice-listening" role="status">Listening · speak clearly, then stop</span>}
     {message && <span className="voice-message" role="status">{message}</span>}
+    <span className="voice-privacy-note">Browser speech recognition may process audio through your browser provider. Use synthetic or de-identified notes only.</span>
   </span>;
 }
