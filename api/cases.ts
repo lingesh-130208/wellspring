@@ -2,7 +2,6 @@ import { randomBytes } from 'node:crypto';
 import { getSession, requireAccountRole } from './auth';
 const supabaseUrl = process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const clinicToken = process.env.CLINIC_ADMIN_TOKEN;
 const headers = () => ({ apikey: serviceKey || '', Authorization: 'Bearer ' + (serviceKey || ''), 'Content-Type': 'application/json' });
 function code() { return randomBytes(5).toString('hex').toUpperCase(); }
 export default async function handler(req:any,res:any) {
@@ -10,7 +9,6 @@ export default async function handler(req:any,res:any) {
  const url=new URL(req.url||'/api/cases','http://localhost');
  const accessCode=(url.searchParams.get('code')||'').trim().toUpperCase();
  const action=url.searchParams.get('action')||'';
- const clinicAuthorized=!!clinicToken && typeof req.headers['x-clinic-token']==='string' && req.headers['x-clinic-token']===clinicToken;
  const session=getSession(req);
  // Clinic operations require an authenticated clinician account. The legacy shared token is not accepted as a substitute for login.
  if(['publish','list','review-feedback'].includes(action)) {
