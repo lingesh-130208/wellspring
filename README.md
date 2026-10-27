@@ -51,7 +51,7 @@ Run `supabase/schema.sql` in the intended Supabase project. The schema and actua
 - End-to-end browser login: **not yet verified**; Vercel deployment protection blocked automated content fetch.
 - Storage integration: **not configured**. Case APIs return 503 until server-side Supabase variables are set and `supabase/schema.sql` is applied.
 - Gemini integration: **not configured**; report processing falls back to a clearly labelled local summary until `GEMINI_API_KEY` is set.
-- Live camera model: added to the branch; deployment build and browser camera test still need to pass before calling it verified.
+- Live camera model: deployment build passed; camera permission, CDN model download, and on-device behavior still need a hands-on browser test.
 
 ## Security and clinical limitations
 
