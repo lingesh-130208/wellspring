@@ -57,3 +57,23 @@
 .spin-icon{animation:wellspring-spin 1s linear infinite}
 @keyframes wellspring-spin{to{transform:rotate(360deg)}}
 @media(max-width:560px){.live-camera-card{padding:1rem}.live-camera-heading{align-items:flex-start}.live-camera-live{font-size:.6rem}.live-camera-actions .primary-btn,.live-camera-actions .secondary-btn{width:100%;justify-content:center}}
+
+
+/* Patient-reported activity history */
+.patient-progress{margin:1.25rem 0;padding:1rem 1.1rem;border:1px solid #e0ebe6;border-radius:1rem;background:#fbfdfc}
+.patient-progress-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem}
+.patient-progress-heading h4{margin:.1rem 0 .3rem}
+.patient-progress-heading p,.progress-empty{margin:.2rem 0;color:#65776f;font-size:.85rem;line-height:1.5}
+.progress-count{white-space:nowrap;border-radius:999px;padding:.4rem .65rem;background:#e5f5ed;color:#216247;font-size:.75rem;font-weight:750}
+.progress-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;margin:1rem 0}
+.progress-stats>div{display:flex;flex-direction:column;gap:.2rem;padding:.75rem;border-radius:.75rem;background:#f0f7f3}
+.progress-stats strong{font-size:1.4rem;color:#194e3a}
+.progress-stats span{font-size:.78rem;color:#65776f}
+.progress-list{display:flex;flex-direction:column;gap:.65rem}
+.progress-item{padding:.8rem;border:1px solid #e3ece7;border-radius:.75rem;background:white}
+.progress-item>div{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.3rem .8rem}
+.progress-item strong{font-size:.88rem}
+.progress-item small{color:#75857e;font-size:.74rem}
+.progress-category{display:inline-block;margin-top:.5rem;padding:.25rem .5rem;border-radius:999px;background:#edf3f0;color:#47665a;font-size:.72rem;text-transform:capitalize}
+.progress-item p{margin:.5rem 0 0;color:#5d7168;font-size:.84rem;line-height:1.5}
+@media(max-width:480px){.patient-progress-heading{flex-direction:column}.progress-count{align-self:flex-start}.progress-stats{gap:.5rem}}
