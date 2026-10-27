@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { getSession, requireAccountRole } from './auth';
+import { getConfiguredAccount, getConfiguredPatients, getSession, requireAccountRole } from './auth';
 const supabaseUrl = process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const headers = () => ({ apikey: serviceKey || '', Authorization: 'Bearer ' + (serviceKey || ''), 'Content-Type': 'application/json' });
@@ -31,17 +31,21 @@ export default async function handler(req:any,res:any) {
    const body=req.body||{};
    if(!body.clinicianApproved) return res.status(400).json({error:'A clinician must approve the plan before publishing.'});
    if(!body.summary || !body.planDraft) return res.status(400).json({error:'A report summary and plan draft are required.'});
-   const record={access_code:code(),patient_label:String(body.patientLabel||'Demo patient').slice(0,80),report_summary:body.summary,clinician_plan:String(body.planDraft).slice(0,12000),video_recommendations:Array.isArray(body.videos)?body.videos.slice(0,5):[],clinician_approved:true};
+   const configuredPatients = getConfiguredPatients();
+   const requestedPatientId = String(body.patientAccountId || '').trim();
+   const patientAccount = requestedPatientId ? getConfiguredAccount(requestedPatientId) : (configuredPatients.length === 1 ? configuredPatients[0] : null);
+   if (!patientAccount || patientAccount.role !== 'patient') return res.status(400).json({error:'Choose a configured patient account before publishing this case.'});
+   const record={access_code:code(),patient_account_id:patientAccount.id,patient_label:String(body.patientLabel||patientAccount.name||'Demo patient').slice(0,80),report_summary:body.summary,clinician_plan:String(body.planDraft).slice(0,12000),video_recommendations:Array.isArray(body.videos)?body.videos.slice(0,5):[],clinician_approved:true};
    const r=await fetch(supabaseUrl+'/rest/v1/care_cases',{method:'POST',headers:{...headers(),Prefer:'return=representation'},body:JSON.stringify(record)});
    if(!r.ok) return res.status(502).json({error:'Could not save the case. Check the database schema and server configuration.'});
    const rows=await r.json(); return res.status(201).json({case:rows[0]});
   }
   if(req.method==='GET' && accessCode) {
    if(!/^[A-F0-9]{10}$/.test(accessCode)) return res.status(400).json({error:'Access code format is invalid.'});
-   const r=await fetch(supabaseUrl+'/rest/v1/care_cases?access_code=eq.'+encodeURIComponent(accessCode)+'&select=patient_label,report_summary,clinician_plan,video_recommendations,clinician_approved,created_at,expires_at&limit=1',{headers:headers()});
+   const r=await fetch(supabaseUrl+'/rest/v1/care_cases?access_code=eq.'+encodeURIComponent(accessCode)+'&select=patient_account_id,patient_label,report_summary,clinician_plan,video_recommendations,clinician_approved,created_at,expires_at&limit=1',{headers:headers()});
    if(!r.ok) return res.status(502).json({error:'Case lookup failed.'});
    const rows=await r.json(); const record=rows[0];
-   if(!record || new Date(record.expires_at).getTime()<Date.now()) return res.status(404).json({error:'No active case found for that code.'});
+   if(!record || new Date(record.expires_at).getTime()<Date.now() || (session.role === 'patient' && record.patient_account_id !== session.id)) return res.status(404).json({error:'No active case found for that code.'});
    if(!record.clinician_approved) return res.status(403).json({error:'This plan has not been approved by a clinician.'});
    return res.status(200).json({case:record});
   }
@@ -49,7 +53,7 @@ export default async function handler(req:any,res:any) {
    // clinician session and clinic token already checked
    const body=req.body||{}; const targetCode=String(body.accessCode||'').trim().toUpperCase(); const feedbackId=String(body.feedbackId||'');
    if(!/^[A-F0-9]{10}$/.test(targetCode) || !feedbackId) return res.status(400).json({error:'Case code and feedback identifier are required.'});
-   const lookup=await fetch(supabaseUrl+'/rest/v1/care_cases?access_code=eq.'+encodeURIComponent(targetCode)+'&select=id,feedback,expires_at&limit=1',{headers:headers()});
+   const lookup=await fetch(supabaseUrl+'/rest/v1/care_cases?access_code=eq.'+encodeURIComponent(targetCode)+'&select=id,patient_account_id,feedback,expires_at&limit=1',{headers:headers()});
    if(!lookup.ok) return res.status(502).json({error:'Could not verify the case.'});
    const rows=await lookup.json(); const record=rows[0];
    if(!record || new Date(record.expires_at).getTime()<Date.now()) return res.status(404).json({error:'No active case found for that code.'});
@@ -73,14 +77,13 @@ export default async function handler(req:any,res:any) {
    const lookup=await fetch(supabaseUrl+'/rest/v1/care_cases?access_code=eq.'+encodeURIComponent(accessCode)+'&select=id,feedback,expires_at&limit=1',{headers:headers()});
    if(!lookup.ok) return res.status(502).json({error:'Could not verify the case.'});
    const rows=await lookup.json(); const record=rows[0];
-   if(!record || new Date(record.expires_at).getTime()<Date.now()) return res.status(404).json({error:'No active case found for that code.'});
+   if(!record || new Date(record.expires_at).getTime()<Date.now() || record.patient_account_id !== session?.id) return res.status(404).json({error:'No active case found for that code.'});
    const feedback=[...(Array.isArray(record.feedback)?record.feedback:[]),{id:randomBytes(8).toString('hex'),exercise:String(body.exercise||'General session').slice(0,120),category,comfort:String(body.comfort||'not_recorded').slice(0,40),symptomRating:rating,message,reviewStatus:'pending',createdAt:new Date().toISOString()}].slice(-100);
    const saved=await fetch(supabaseUrl+'/rest/v1/care_cases?id=eq.'+record.id,{method:'PATCH',headers:{...headers(),Prefer:'return=minimal'},body:JSON.stringify({feedback,updated_at:new Date().toISOString()})});
    if(!saved.ok) return res.status(502).json({error:'Feedback could not be saved.'});
    return res.status(200).json({ok:true});
   }
   if(req.method==='GET' && url.searchParams.get('action')==='list') {
-   if(!clinicAuthorized) return res.status(401).json({error:'Clinic authorization required.'});
    const r=await fetch(supabaseUrl+'/rest/v1/care_cases?select=id,access_code,patient_label,report_summary,clinician_plan,video_recommendations,clinician_approved,feedback,created_at,expires_at&order=created_at.desc&limit=100',{headers:headers()});
    if(!r.ok) return res.status(502).json({error:'Could not load cases.'});
    return res.status(200).json({cases:await r.json()});
