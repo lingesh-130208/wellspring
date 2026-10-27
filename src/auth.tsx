@@ -20,6 +20,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Account | null>(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
+    const demoRequested = new URLSearchParams(window.location.search).get('demo') === '1';
+    if (demoRequested) {
+      setUser({ id: 'synthetic-demo-clinician', email: 'demo@wellspring.local', name: 'Demo Clinician', role: 'clinician' });
+      setLoading(false);
+      return;
+    }
     let mounted = true;
     jsonRequest('/api/auth?action=me')
       .then(data => { if (mounted) setUser(data.authenticated ? data.user : null); })
