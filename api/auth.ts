@@ -69,9 +69,14 @@ export function requireRole(req: any, res: any, roles: Account['role'][]): Accou
 export function requireAccountRole(req: any, res: any, roles: Account['role'][]): Account | null {
   const user = requireRole(req, res, roles);
   if (!user) return null;
-  if (user.role === 'clinician' && process.env.CLINIC_ADMIN_TOKEN) {
+  if (user.role === 'clinician') {
+    const expected = process.env.CLINIC_ADMIN_TOKEN;
+    if (!expected) {
+      res.status(503).json({ error: 'Clinic authorization is not configured. Set CLINIC_ADMIN_TOKEN in Vercel.' });
+      return null;
+    }
     const token = req.headers?.['x-clinic-token'];
-    if (typeof token !== 'string' || !safeEqual(token, process.env.CLINIC_ADMIN_TOKEN)) {
+    if (typeof token !== 'string' || !safeEqual(token, expected)) {
       res.status(401).json({ error: 'Clinic authorization is missing or invalid.' });
       return null;
     }
