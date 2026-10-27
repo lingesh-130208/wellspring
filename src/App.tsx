@@ -40,6 +40,9 @@ export default function App() {
   const [clinicianApproved, setClinicianApproved] = useState(false);
   const [patientCase, setPatientCase] = useState<any>(null);
   const [patientBusy, setPatientBusy] = useState(false);
+  const [snapshotFile, setSnapshotFile] = useState<File | null>(null);
+  const [frameReview, setFrameReview] = useState<any>(null);
+  const [frameBusy, setFrameBusy] = useState(false);
 
   const reportReady = reportText.trim().length > 20;
   const recommendations = useMemo(() => videos.length ? videos : chooseVideos(reportText), [videos, reportText]);
@@ -116,6 +119,20 @@ export default function App() {
     } catch(e) { setStatus(e instanceof Error ? e.message : 'Could not load case.'); }
     finally { setPatientBusy(false); }
   }
+  async function analyzeSnapshot() {
+    if (!snapshotFile) { setStatus('Choose one still image first.'); return; }
+    if (!['image/jpeg','image/png','image/webp'].includes(snapshotFile.type)) { setStatus('Use a JPG, PNG, or WEBP image.'); return; }
+    if (snapshotFile.size > 4 * 1024 * 1024) { setStatus('Choose an image smaller than 4 MB.'); return; }
+    setFrameBusy(true); setFrameReview(null);
+    try {
+      const dataUrl = await new Promise<string>((resolve,reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(snapshotFile); });
+      const imageBase64 = dataUrl.split(',')[1] || '';
+      const r = await fetch('/api/frame', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mimeType:snapshotFile.type,imageBase64})});
+      const d = await r.json(); if(!r.ok) throw new Error(d.error || 'Image review failed.');
+      setFrameReview(d.review); setStatus('Single-frame review returned. It is not a clinical assessment.');
+    } catch(e) { setStatus(e instanceof Error ? e.message : 'Image review unavailable.'); }
+    finally { setFrameBusy(false); }
+  }
   async function submitFeedback() {
     if(!accessCode.trim() || feedback.trim().length<2) { setStatus('Enter a valid clinic access code and feedback.'); return; }
     try {
@@ -157,7 +174,7 @@ export default function App() {
           <div className="panel results-panel"><div className="panel-title"><span className="step-num">02</span><div><h3>Report-informed review</h3><p>AI output is an assistant, never a decision-maker.</p></div></div>
             {!summary ? <div className="empty-state"><div className="empty-icon"><ClipboardList size={25}/></div><strong>Your report review will appear here</strong><p>Submit report text to organize documented information and generate questions for the treating clinician.</p><div className="empty-points"><span><CheckCircle2 size={15}/> No automatic diagnosis</span><span><CheckCircle2 size={15}/> Missing information stays missing</span><span><CheckCircle2 size={15}/> Clinician approval required</span></div></div> : <div className="result-content"><div className="result-banner"><CheckCircle2 size={18}/><span>Draft generated · verify every field</span></div><h4>Summary of stated information</h4><p>{summary.summary}</p><h4>Items explicitly mentioned</h4><div className="chips">{(summary.mentioned.length ? summary.mentioned : ['No structured items returned']).map((x,i)=><span key={i}>{x}</span>)}</div><h4>Questions for the treating clinician</h4><ul>{summary.questionsForClinician.map((x,i)=><li key={i}>{x}</li>)}</ul><div className="caution-note"><AlertTriangle size={17}/><span>{summary.caution}</span></div><h4>Clinician-facing plan draft</h4><div className="plan-draft">{plan}</div><label className="token-field">Clinic authorization token<input type="password" value={clinicToken} onChange={e=>setClinicToken(e.target.value)} placeholder="Set CLINIC_ADMIN_TOKEN in deployment settings" autoComplete="off"/></label><label className="consent approval-check"><input type="checkbox" checked={clinicianApproved} onChange={e=>setClinicianApproved(e.target.checked)}/><span>I am the treating clinician or authorized reviewer and have reviewed and approved this plan for this demo case.</span></label><button className="primary-btn full" onClick={publishCase} disabled={busy || !clinicianApproved}>Publish approved case & create access code <ArrowRight size={17}/></button></div>}
           </div>
-        </div> : <div className="patient-card panel"><div className="empty-icon"><HeartPulse size={25}/></div><h3>Access your clinic-approved plan</h3><p>Enter the code supplied by your clinic. Only clinician-approved demo cases can be opened.</p><div className="code-row"><input value={accessCode} onChange={e=>setAccessCode(e.target.value)} placeholder="Clinic-issued access code"/><button className="primary-btn" disabled={patientBusy} onClick={lookupPatient}>{patientBusy?'Looking up…':'Find my plan'} <ArrowRight size={16}/></button></div>{patientCase && <div className="patient-result"><h4>Approved care information</h4><p>{patientCase.report_summary?.summary || 'See the summary provided by your clinic.'}</p><h4>Clinician-approved plan</h4><div className="plan-draft">{patientCase.clinician_plan}</div><h4>Learning resources</h4><p>Report-matched resources appear in the Learning Resources section below.</p></div>}{status && <p className="status-message">{status}</p>}</div>}
+        </div> : <div className="patient-card panel"><div className="empty-icon"><HeartPulse size={25}/></div><h3>Access your clinic-approved plan</h3><p>Enter the code supplied by your clinic. Only clinician-approved demo cases can be opened.</p><div className="code-row"><input value={accessCode} onChange={e=>setAccessCode(e.target.value)} placeholder="Clinic-issued access code"/><button className="primary-btn" disabled={patientBusy} onClick={lookupPatient}>{patientBusy?'Looking up…':'Find my plan'} <ArrowRight size={16}/></button></div>{patientCase && <div className="patient-result"><h4>Approved care information</h4><p>{patientCase.report_summary?.summary || 'See the summary provided by your clinic.'}</p><h4>Clinician-approved plan</h4><div className="plan-draft">{patientCase.clinician_plan}</div><h4>Learning resources</h4><p>Report-matched resources appear in the Learning Resources section below.</p><h4>One-time camera snapshot</h4><p>Optional single still image for a basic framing-quality review. It does not score exercise technique or confirm safety.</p><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={e=>{setSnapshotFile(e.target.files?.[0]||null);setFrameReview(null);}}/><button className="secondary-btn" disabled={frameBusy} onClick={analyzeSnapshot}>{frameBusy?'Reviewing image…':'Review one snapshot'} <ArrowRight size={16}/></button>{frameReview && <div className="frame-review"><strong>Image quality</strong><p>{frameReview.imageQuality}</p><strong>Visible observation</strong><p>{frameReview.visibleObservation}</p><strong>Next step</strong><p>{frameReview.nextStep}</p><small>{frameReview.caution}</small></div>}</div>}{status && <p className="status-message">{status}</p>}</div>}
       </section>
 
       <section className="resources-section" id="resources"><div className="section-heading"><div><div className="eyebrow">PERSONALIZED LEARNING</div><h2>Helpful videos, chosen from the report.</h2><p>Topics are matched to words in the submitted report. Videos are optional educational resources—not treatment instructions.</p></div><span className="resource-count"><BookOpen size={17}/> REPORT-MATCHED</span></div>
