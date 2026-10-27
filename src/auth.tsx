@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, type FormEvent, type Re
 import { ArrowRight, HeartPulse, LockKeyhole, ShieldCheck, UserRound } from 'lucide-react';
 
 export type Account = { id: string; email: string; name: string; role: 'patient' | 'clinician' };
-type AuthState = { user: Account | null; loading: boolean; signOut: () => Promise<void> };
+type AuthState = { user: Account; loading: boolean; signOut: () => Promise<void> };
 const AuthContext = createContext<AuthState | null>(null);
 
 async function jsonRequest(url: string, init?: RequestInit) {
