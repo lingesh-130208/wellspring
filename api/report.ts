@@ -1,3 +1,4 @@
+import { requireRole } from './auth';
 type VideoPick = { title: string; reason: string; url: string; source: string; videoId?: string };
 const library: VideoPick[] = [
   { title: 'How to do pelvic floor exercises | NHS', reason: 'An NHS physiotherapist explains pelvic-floor exercises. Watch only if the treating clinician confirms this education is suitable.', url: 'https://www.youtube.com/watch?v=JFJtUtKQCuM', videoId: 'JFJtUtKQCuM', source: 'NHS · verified educational video' },
@@ -21,6 +22,7 @@ function localSummary(text:string) {
 }
 export default async function handler(req:any,res:any) {
  res.setHeader('Cache-Control','no-store');
+ if (!requireRole(req, res, ['clinician'])) return;
  if(req.method!=='POST') return res.status(405).json({error:'Method not allowed'});
  const reportText=typeof req.body?.reportText==='string'?req.body.reportText.slice(0,30000):'';
  if(reportText.trim().length<20) return res.status(400).json({error:'Provide at least 20 characters of report text.'});
