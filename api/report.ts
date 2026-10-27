@@ -1,4 +1,4 @@
-import { requireRole } from './auth';
+import { requireRole } from './auth.js';
 type VideoPick = { title: string; reason: string; url: string; source: string; videoId?: string };
 const library: VideoPick[] = [
   { title: 'How to do pelvic floor exercises | NHS', reason: 'An NHS physiotherapist explains pelvic-floor exercises. Watch only if the treating clinician confirms this education is suitable.', url: 'https://www.youtube.com/watch?v=JFJtUtKQCuM', videoId: 'JFJtUtKQCuM', source: 'NHS · verified educational video' },
