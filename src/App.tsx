@@ -3,6 +3,7 @@ import { AuthHeader, useAuth } from './auth';
 import AccessibilityTools from './AccessibilityTools';
 import VoiceScribeButton from './VoiceScribeButton';
 import ReadAloudButton from './ReadAloudButton';
+import SessionReminder from './SessionReminder';
 const LiveCameraCoach = lazy(() => import('./LiveCameraCoach'));
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth/mammoth.browser';
@@ -321,6 +322,7 @@ function PatientPortal() {
         <div className="hero-copy"><div className="eyebrow"><span className="dot"/> YOUR PRIVATE CARE SPACE</div><h1>Hello, <em>{user.name.split(' ')[0]}.</em></h1><p>Your clinic-approved care resources and feedback tools are together here. Follow only the plan approved by your treating clinician.</p><div className="trust-line"><ShieldCheck size={17}/> Signed in as a patient · Clinician-led care</div></div>
         <div className="hero-visual"><div className="care-card"><div className="care-card-head"><span className="mini-icon"><HeartPulse size={18}/></span><span className="live-label">YOUR CARE</span></div><div className="profile-row"><div className="avatar">{user.name.slice(0,1).toUpperCase()}</div><div><strong>{user.name}</strong><small>Patient workspace</small></div><span className="check"><CheckCircle2 size={17}/></span></div><div className="soft-line"/><div className="metric-row"><div><small>Plan access</small><strong>Clinic approved</strong></div><div><small>Changes</small><strong>Clinician reviewed</strong></div></div></div></div>
       </section>
+      <SessionReminder />
       <section className="workspace-section" id="patient-plan">
         <div className="section-heading"><div><div className="eyebrow">MY CARE PLAN</div><h2>Open your approved plan.</h2><p>Enter the access code shared privately by your clinic. Your session must be authenticated before case information is returned.</p></div></div>
         <div className="patient-card panel"><div className="empty-icon"><HeartPulse size={25}/></div><h3>Access your clinic-approved plan</h3><p>Enter the code supplied by your clinic.</p><div className="code-row"><input value={accessCode} onChange={e=>setAccessCode(e.target.value)} placeholder="Clinic-issued access code" autoComplete="off"/><button className="primary-btn" disabled={busy} onClick={lookupPatient}>{busy?'Loading…':'Find my plan'} <ArrowRight size={16}/></button></div>
