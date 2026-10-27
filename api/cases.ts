@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { getConfiguredAccount, getConfiguredPatients, getSession, requireAccountRole } from './auth.js';
-import { isValidAccessCode, normalizeFeedbackCategory, parseSymptomRating } from './case-validation.mjs';
+import { isValidAccessCode, normalizeFeedbackCategory, parseSymptomRating } from '../scripts/validate-auth-config.mjs';
 const supabaseUrl = process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const headers = () => ({ apikey: serviceKey || '', Authorization: 'Bearer ' + (serviceKey || ''), 'Content-Type': 'application/json' });
