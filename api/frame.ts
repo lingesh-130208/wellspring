@@ -1,5 +1,7 @@
+import { requireRole } from './auth';
 export default async function handler(req:any,res:any) {
  res.setHeader('Cache-Control','no-store');
+ if (!requireRole(req, res, ['patient'])) return;
  if(req.method!=='POST') return res.status(405).json({error:'Method not allowed'});
  const apiKey=process.env.GEMINI_API_KEY;
  if(!apiKey) return res.status(503).json({error:'Frame review needs a configured AI provider.'});
