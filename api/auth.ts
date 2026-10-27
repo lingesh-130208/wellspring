@@ -14,9 +14,10 @@ function accounts(): DemoAccount[] {
     const rows = JSON.parse(raw);
     if (!Array.isArray(rows)) return [];
     return rows.filter((r: any) =>
-      r && typeof r.email === 'string' && typeof r.name === 'string' &&
+      r && typeof r.id === 'string' && typeof r.email === 'string' && typeof r.name === 'string' &&
       ['patient', 'clinician'].includes(r.role) && typeof r.salt === 'string' &&
-      typeof r.passwordHash === 'string'
+      /^[a-f0-9]{32}$/i.test(r.salt) && typeof r.passwordHash === 'string' &&
+      /^[a-f0-9]{128}$/i.test(r.passwordHash)
     ) as DemoAccount[];
   } catch { return []; }
 }
@@ -29,10 +30,15 @@ function safeEqual(a: string, b: string) {
   return aa.length === bb.length && timingSafeEqual(aa, bb);
 }
 function parseCookies(header: string | undefined) {
-  return Object.fromEntries((header || '').split(';').map(part => {
+  const parsed: Record<string,string> = {};
+  for (const part of (header || '').split(';')) {
     const i = part.indexOf('=');
-    return i < 0 ? ['', ''] : [part.slice(0, i).trim(), decodeURIComponent(part.slice(i + 1).trim())];
-  }).filter(([k]) => !!k));
+    if (i < 1) continue;
+    const key = part.slice(0,i).trim();
+    const raw = part.slice(i+1).trim();
+    try { parsed[key] = decodeURIComponent(raw); } catch { parsed[key] = raw; }
+  }
+  return parsed;
 }
 export function getConfiguredAccount(id: string): Account | null {
   const account = accounts().find(a => a.id === id);
