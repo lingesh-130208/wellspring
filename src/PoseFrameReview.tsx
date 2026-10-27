@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { FilesetResolver, PoseLandmarker } from '@mediapipe/tasks-vision';
 
@@ -18,10 +18,13 @@ export default function PoseFrameReview({ onClose }: Props) {
   const [message, setMessage] = useState('');
   const [landmarks, setLandmarks] = useState<Array<{x:number;y:number;visibility?:number}> | null>(null);
   const [count, setCount] = useState(0);
+  const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
 
   function chooseFile(event: ChangeEvent<HTMLInputElement>) {
     const next=event.target.files?.[0] || null;
-    setLandmarks(null); setMessage(''); setFile(null); setPreview('');
+    if (preview) URL.revokeObjectURL(preview);
+    setLandmarks(null); setMessage(''); setFile(null); setPreview(''); setPrivacyAcknowledged(false);
     if (!next) return;
     if (!['image/jpeg','image/png','image/webp'].includes(next.type)) { setMessage('Choose a JPG, PNG, or WEBP still image.'); return; }
     if (next.size > 4 * 1024 * 1024) { setMessage('Choose an image smaller than 4 MB.'); return; }
@@ -30,6 +33,7 @@ export default function PoseFrameReview({ onClose }: Props) {
 
   async function analyze() {
     if (!file || !preview) { setMessage('Choose a still image first.'); return; }
+    if (!privacyAcknowledged) { setMessage('Please acknowledge the image-processing and usage-metrics note before continuing.'); return; }
     setBusy(true); setMessage('Loading the on-device pose model…'); setLandmarks(null); setCount(0);
     let landmarker: PoseLandmarker | null = null;
     let image: HTMLImageElement | null = null;
@@ -84,7 +88,8 @@ export default function PoseFrameReview({ onClose }: Props) {
         {landmarks.map((p,i) => p.visibility === undefined || p.visibility >= 0.5 ? <circle key={i} cx={p.x} cy={p.y} r=".008" fill="currentColor"/> : null)}
       </svg>}
     </div>}
-    <div className="pose-actions"><button className="secondary-btn" onClick={analyze} disabled={busy || !file}>{busy?'Analyzing…':'Detect visible pose landmarks'}</button>{file && <button className="pose-reset" onClick={()=>{setFile(null);setPreview('');setLandmarks(null);setMessage('');setCount(0);}}>Clear image</button>}</div>
+    <label className="pose-consent"><input type="checkbox" checked={privacyAcknowledged} onChange={e=>setPrivacyAcknowledged(e.target.checked)}/> I understand the image is processed in this browser, while model/WASM files and usage metrics may involve Google-hosted services.</label>
+    <div className="pose-actions"><button className="secondary-btn" onClick={analyze} disabled={busy || !file || !privacyAcknowledged}>{busy?'Analyzing…':'Detect visible pose landmarks'}</button>{file && <button className="pose-reset" onClick={()=>{if(preview) URL.revokeObjectURL(preview);setFile(null);setPreview('');setLandmarks(null);setMessage('');setCount(0);setPrivacyAcknowledged(false);}}>Clear image</button>}</div>
     {message && <p className="pose-message" role="status">{message}</p>}
     {landmarks && <p className="pose-count"><strong>{count}/33</strong> landmarks visible at the selected threshold. This count describes model visibility only; it is not a measure of exercise quality.</p>}
     <div className="pose-privacy"><strong>Privacy and clinical limits</strong><p>Inference runs in this browser on the selected still image; the image is not posted to the WellSpring backend by this component. Model/WASM assets load from external Google-hosted services, and MediaPipe may send usage metrics. Do not upload identifiable patient imagery unless authorized. This model cannot see or measure internal pelvic-floor muscle contractions, diagnose a condition, or determine whether an exercise is safe.</p></div>
