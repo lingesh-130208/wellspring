@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { localSummary, matchVideos } from '../api/report.ts';
+import { localSummary, matchVideos } from '../api/report-logic.mjs';
 
 test('fallback labels itself as non-AI and does not prescribe', () => {
   const summary = localSummary('Synthetic report: urinary leakage with pain reported.');
