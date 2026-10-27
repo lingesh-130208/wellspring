@@ -45,7 +45,7 @@ export default function App() {
   const [frameBusy, setFrameBusy] = useState(false);
 
   const reportReady = reportText.trim().length > 20;
-  const recommendations = useMemo(() => videos.length ? videos : chooseVideos(reportText), [videos, reportText]);
+  const recommendations = useMemo(() => videos.length ? videos : reportText.trim().length > 20 ? chooseVideos(reportText) : [], [videos, reportText]);
 
   async function handleFile(file?: File) {
     if (!file) return;
