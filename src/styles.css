@@ -79,3 +79,18 @@
 @media(max-width:480px){.patient-progress-heading{flex-direction:column}.progress-count{align-self:flex-start}.progress-stats{gap:.5rem}}
 
 .priority-note{margin:.5rem 0 1rem;padding:.65rem .8rem;border-left:3px solid #d7a84d;background:#fffaf0;color:#6b5730;font-size:.82rem;line-height:1.5;border-radius:0 .5rem .5rem 0}
+
+
+/* Explainable feedback-to-action loop */
+.care-loop-insight{margin:1rem 0 1.4rem;padding:1rem 1.1rem;border:1px solid #dbe7e1;border-radius:1rem;background:#f7faf8}
+.care-loop-insight h4{margin:.3rem 0 .45rem;color:#244b3c}
+.care-loop-insight p{margin:0;color:#52685e;line-height:1.6;font-size:.9rem}
+.care-loop-insight small{display:block;margin-top:.7rem;color:#718178;font-size:.76rem;line-height:1.5}
+.care-loop-attention{border-color:#e6b5a9;background:#fff6f3}
+.care-loop-attention h4{color:#8d3328}
+.care-loop-review{border-color:#e5d1a1;background:#fffaf0}
+.care-loop-review h4{color:#76551e}
+.care-loop-positive{border-color:#b9deca;background:#f3fbf6}
+.care-loop-positive h4{color:#216247}
+.dashboard-stats{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:760px){.dashboard-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
