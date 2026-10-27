@@ -16,7 +16,7 @@ export function normalizeFeedbackCategory(value) {
 export function parseSymptomRating(value) {
   if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) return { ok: true, value: null };
   if (typeof value !== 'number' && typeof value !== 'string') return { ok: false, value: null };
-  if (typeof value === 'string' && !/^\\d+$/.test(value.trim())) return { ok: false, value: null };
+  if (typeof value === 'string' && [...value.trim()].some(character => character < '0' || character > '9')) return { ok: false, value: null };
   const rating = Number(value);
   if (!Number.isInteger(rating) || rating < 0 || rating > 10) return { ok: false, value: null };
   return { ok: true, value: rating };
