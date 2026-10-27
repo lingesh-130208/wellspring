@@ -27,9 +27,7 @@ function chooseVideos(text: string): VideoPick[] {
 
 export default function App() {
   const { user } = useAuth();
-  if (user.role === 'patient') {
-    return <PatientPortal />;
-  }
+  if (user.role === 'patient') return <PatientPortal />;
 
   const [reportText, setReportText] = useState('');
   const [reportName, setReportName] = useState('');
