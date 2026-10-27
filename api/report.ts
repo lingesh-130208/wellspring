@@ -10,7 +10,7 @@ function matchVideos(text: string) {
  if(/surgery|operation|post.?op|prolapse repair/.test(t)) picks.push(library[3]);
  if(/urinary|leakage|incontinence|bladder|urgency/.test(t)) picks.push(library[1],library[0]);
  if(/mobility|fall|balance|frail|older adult/.test(t)) picks.push(library[2]);
- if(!picks.length) picks.push(library[0]);
+ // Do not recommend an unrelated exercise video when the report has no matching topic; clinician selection is required.
  return [...new Map(picks.map(p=>[p.title,p])).values()].slice(0,3);
 }
 function localSummary(text:string) {
