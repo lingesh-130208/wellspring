@@ -170,6 +170,8 @@ export default function App() {
     } catch(e) { setStatus(e instanceof Error ? e.message : 'Could not save feedback.'); }
   }
 
+  if (user.role === 'patient') return <PatientPortal />;
+
   return <div className="app-shell">
     <header className="topbar">
       <a className="brand" href="#" aria-label="WellSpring home"><span className="brand-mark"><HeartPulse size={22}/></span><span><strong>WellSpring</strong><small>PS13 · connected care</small></span></a>
