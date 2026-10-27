@@ -44,3 +44,32 @@ A hackathon proof of concept for clinician-reviewed pelvic-floor rehabilitation 
 ## Verification
 
 A GitHub Actions workflow builds the frontend on each push. Check the latest run in the Actions tab before treating the repository as build-verified.
+
+
+## Authentication repair branch
+
+This branch adds an application sign-in layer on top of Vercel deployment protection:
+- `POST /api/auth?action=login` checks a configured demo-account list using scrypt password hashes and issues an HttpOnly, signed, expiring session cookie.
+- `GET /api/auth?action=me` checks whether the current request has a valid session.
+- `POST /api/auth?action=logout` expires the session cookie.
+- The React app shows a sign-in screen until the session is resolved. Patient and clinician workspaces are separated by the signed-in account role.
+- `POST /api/report` and `POST /api/frame` require role-appropriate sessions.
+- Case lookup and feedback require a signed-in session; clinician list/publish/review require a clinician session and the configured clinic token.
+
+### Required server configuration
+
+The sign-in feature will deliberately remain unavailable until all required configuration exists. It does not ship with public demo passwords.
+
+- `AUTH_SESSION_SECRET`: at least 32 random characters, stored only as a Vercel encrypted/sensitive server environment variable.
+- `WELLSPRING_DEMO_ACCOUNTS`: server-only JSON array containing account IDs, emails, names, role, salt and scrypt password hashes for at least one `patient` and one `clinician`.
+- `CLINIC_ADMIN_TOKEN`: strong server-only token required for clinician case mutations.
+- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`: server-only storage configuration for persisted cases and feedback.
+- `GEMINI_API_KEY`: optional server-side key for real AI report/image processing.
+
+Generate password hashes without putting plaintext passwords in the repository:
+1. Set `WELLSPRING_CLINICIAN_DEMO_PASSWORD` and `WELLSPRING_PATIENT_DEMO_PASSWORD` in a trusted local environment to unique passwords of at least 12 characters.
+2. Run `npm run auth:accounts` in that environment. It prints the hashed account configuration; copy that output directly into the encrypted `WELLSPRING_DEMO_ACCOUNTS` Vercel environment variable. Do not commit the output.
+3. Configure a strong `AUTH_SESSION_SECRET` and the remaining server secrets in the Vercel project environment, then redeploy. Never paste secrets into chat or store them in source control.
+
+The auth account list is a small hackathon demonstration account store, not a signup, password-reset, email-verification, or production identity-management system. Do not use it with real patient records. Production deployment requires an established identity provider, per-user case ownership/authorization, secure database policies, rate limiting, audit logging and a privacy/security review.
+
