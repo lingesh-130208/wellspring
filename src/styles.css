@@ -158,3 +158,5 @@ html.a11y-high-contrast .panel,html.a11y-high-contrast .care-card,html.a11y-high
 html.a11y-high-contrast .panel p,html.a11y-high-contrast .panel small,html.a11y-high-contrast .topbar nav{color:#263c30}
 @media(max-width:1000px){.topbar{height:auto;min-height:82px;flex-wrap:wrap;gap:.6rem;padding:1rem 5%}.accessibility-tools{order:3;width:100%;justify-content:flex-start;margin:0}.topbar nav{gap:14px}.session-reminder{margin-left:5%;margin-right:5%}}
 @media(max-width:560px){.topbar nav{order:2;width:100%;flex-wrap:wrap}.a11y-label{display:none}.a11y-control,.a11y-language{font-size:.72rem}.session-reminder{padding:.9rem;gap:.6rem}.reminder-controls{align-items:stretch}.reminder-controls button{width:100%}.timeline-track{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.voice-privacy-note{flex-basis:100%;font-size:.68rem;line-height:1.45;color:#7b817b;max-width:52rem}
