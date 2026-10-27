@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "auth:validate": "node scripts/validate-auth-config.mjs",
+    "auth:accounts": "node scripts/generate-demo-accounts.mjs",
+    "test": "node scripts/validate-auth-config.mjs --self-test"
   },
   "dependencies": {
     "@vitejs/plugin-react": "4.4.1",
@@ -16,10 +19,12 @@
     "react-dom": "19.1.0",
     "lucide-react": "0.468.0",
     "pdfjs-dist": "4.10.38",
-    "mammoth": "1.9.0"
+    "mammoth": "1.9.0",
+    "@mediapipe/tasks-vision": "0.10.14"
   },
   "devDependencies": {
     "@types/react": "19.1.8",
-    "@types/react-dom": "19.1.7"
+    "@types/react-dom": "19.1.7",
+    "@types/node": "^22.15.30"
   }
 }

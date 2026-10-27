@@ -1,7 +1,11 @@
-import { useMemo, useState } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
-import mammoth from 'mammoth/mammoth.browser';
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { AuthHeader, useAuth } from './auth';
+import AccessibilityTools from './AccessibilityTools';
+import VoiceScribeButton from './VoiceScribeButton';
+import ReadAloudButton from './ReadAloudButton';
+import SessionReminder from './SessionReminder';
+import { reviewStillImageLocally } from './localFrameReview';
+const LiveCameraCoach = lazy(() => import('./LiveCameraCoach'));
 import { Activity, ArrowRight, BookOpen, CheckCircle2, ClipboardList, FileText, HeartPulse, PlayCircle, ShieldCheck, Upload, Video, Users, AlertTriangle } from 'lucide-react';
 
 type ReportSummary = { summary: string; mentioned: string[]; questionsForClinician: string[]; caution: string };
@@ -14,6 +18,12 @@ const videoLibrary: VideoPick[] = [
 ];
 const demoReport = 'Synthetic demo only: older adult with urinary leakage noted in the clinic report. No exercise clearance or contraindication status is documented.';
 
+function feedbackPriority(category: string) {
+  if (category === 'pain') return 0;
+  if (['uncomfortable','too_difficult','unable_to_perform'].includes(category)) return 1;
+  return 2;
+}
+
 function chooseVideos(text: string): VideoPick[] {
   const t = text.toLowerCase();
   const picks: VideoPick[] = [];
@@ -25,6 +35,7 @@ function chooseVideos(text: string): VideoPick[] {
 }
 
 export default function App() {
+  const { user } = useAuth();
   const [reportText, setReportText] = useState('');
   const [reportName, setReportName] = useState('');
   const [summary, setSummary] = useState<ReportSummary | null>(null);
@@ -32,7 +43,7 @@ export default function App() {
   const [videos, setVideos] = useState<VideoPick[]>([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
-  const [role, setRole] = useState<'clinic' | 'patient'>('clinic');
+  const role = user.role;
   const [accessCode, setAccessCode] = useState('');
   const [feedback, setFeedback] = useState('');
   const [feedbackExercise, setFeedbackExercise] = useState('General session');
@@ -41,6 +52,8 @@ export default function App() {
   const [symptomRating, setSymptomRating] = useState('');
   const [clinicCases, setClinicCases] = useState<any[]>([]);
   const [clinicDashboardBusy, setClinicDashboardBusy] = useState(false);
+  const [patientAccounts, setPatientAccounts] = useState<{id:string;name:string;email:string}[]>([]);
+  const [selectedPatientId, setSelectedPatientId] = useState('');
   const [consent, setConsent] = useState(false);
   const [clinicToken, setClinicToken] = useState('');
   const [clinicianApproved, setClinicianApproved] = useState(false);
@@ -61,6 +74,8 @@ export default function App() {
       if (file.type === 'text/plain' || /\.txt$/i.test(file.name)) {
         setReportText(await file.text());
       } else if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+        const pdfjsLib = await import('pdfjs-dist');
+        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
         const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
         const pages: string[] = [];
         for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
@@ -72,7 +87,8 @@ export default function App() {
         if (!extracted) { setStatus('This PDF appears scanned or contains no selectable text. OCR is not enabled yet; paste a clinician-verified transcription instead.'); return; }
         setReportText(extracted);
       } else if (/\.docx$/i.test(file.name) || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-        const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+        const mammothModule = await import('mammoth/mammoth.browser');
+        const result = await mammothModule.default.extractRawText({ arrayBuffer: await file.arrayBuffer() });
         setReportText(result.value.trim());
       } else {
         setStatus('Please use TXT, text-based PDF, or DOCX. Scanned PDFs require OCR and human verification.');
@@ -109,23 +125,40 @@ export default function App() {
     if (!summary || !plan || !clinicianApproved || !clinicToken.trim()) { setStatus('Enter the clinic token and explicitly confirm clinician approval before publishing.'); return; }
     setBusy(true);
     try {
-      const r = await fetch('/api/cases?action=publish', { method:'POST', headers:{'Content-Type':'application/json','x-clinic-token':clinicToken}, body:JSON.stringify({summary,planDraft:plan,videos,clinicianApproved,patientLabel:'Demo patient'}) });
+      const r = await fetch('/api/cases?action=publish', { method:'POST', headers:{'Content-Type':'application/json','x-clinic-token':clinicToken}, body:JSON.stringify({summary,planDraft:plan,videos,clinicianApproved,patientAccountId:selectedPatientId,patientLabel:patientAccounts.find(p=>p.id===selectedPatientId)?.name || 'Demo patient'}) });
       const d = await r.json(); if(!r.ok) throw new Error(d.error || 'Publish failed');
       setStatus('Case published. Patient access code: ' + d.case.access_code + '. Share this code only with the intended demo patient.');
       await loadClinicCases();
     } catch(e) { setStatus(e instanceof Error ? e.message : 'Could not publish case.'); }
     finally { setBusy(false); }
   }
-  async function loadClinicCases() {
-    if (!clinicToken.trim()) { setStatus('Enter the clinic authorization token first.'); return; }
-    setClinicDashboardBusy(true);
+  async function loadClinicCases(silent = false) {
+    if (!clinicToken.trim()) { if (!silent) setStatus('Enter the clinic authorization token first.'); return; }
+    if (!silent) setClinicDashboardBusy(true);
     try {
       const r = await fetch('/api/cases?action=list', {headers:{'x-clinic-token':clinicToken}, cache:'no-store'});
       const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Could not load clinic dashboard');
       setClinicCases(Array.isArray(d.cases) ? d.cases : []);
-    } catch(e) { setStatus(e instanceof Error ? e.message : 'Clinic dashboard unavailable.'); }
-    finally { setClinicDashboardBusy(false); }
+      if (!silent) {
+        try {
+          const pr = await fetch('/api/auth?action=patients', {headers:{'x-clinic-token':clinicToken}, cache:'no-store'});
+          const pd = await pr.json();
+          if (!pr.ok) throw new Error(pd.error || 'Could not load patient accounts');
+          const list = Array.isArray(pd.patients) ? pd.patients : [];
+          setPatientAccounts(list);
+          setSelectedPatientId(current => current && list.some((p:any) => p.id === current) ? current : (list[0]?.id || ''));
+        } catch {
+          setStatus('Cases loaded, but patient assignment could not be refreshed. Check the configured patient accounts.');
+        }
+      }
+    } catch(e) { if (!silent) setStatus(e instanceof Error ? e.message : 'Clinic dashboard unavailable.'); }
+    finally { if (!silent) setClinicDashboardBusy(false); }
   }
+  useEffect(() => {
+    if (role !== 'clinician' || !clinicToken.trim()) return;
+    const timer = window.setInterval(() => { void loadClinicCases(true); }, 15000);
+    return () => window.clearInterval(timer);
+  }, [role, clinicToken]);
   async function reviewFeedback(accessCode:string, feedbackId:string, decision:string, clinicianNote:string) {
     if (!clinicToken.trim()) { setStatus('Clinic token is required.'); return; }
     try {
@@ -168,11 +201,12 @@ export default function App() {
     } catch(e) { setStatus(e instanceof Error ? e.message : 'Could not save feedback.'); }
   }
 
+  if (user.role === 'patient') return <PatientPortal />;
+
   return <div className="app-shell">
     <header className="topbar">
       <a className="brand" href="#" aria-label="WellSpring home"><span className="brand-mark"><HeartPulse size={22}/></span><span><strong>WellSpring</strong><small>PS13 · connected care</small></span></a>
-      <nav><a href="#workflow">How it works</a><a href="#resources">Learning resources</a><a href="#safety">Safety</a></nav>
-      <div className="role-switch" aria-label="Select portal"><button className={role === 'clinic' ? 'selected' : ''} onClick={() => setRole('clinic')}>Clinic</button><button className={role === 'patient' ? 'selected' : ''} onClick={() => setRole('patient')}>Patient</button></div>
+      <nav><a href="#workflow">How it works</a><a href="#resources">Learning resources</a><a href="#safety">Safety</a></nav><AccessibilityTools /><AuthHeader />
     </header>
 
     <main>
@@ -189,21 +223,28 @@ export default function App() {
       <section className="feature-strip" id="workflow"><div><span><FileText/></span><strong>Report-first</strong><small>Use stated facts, not guesses</small></div><div><span><ClipboardList/></span><strong>Clinician review</strong><small>Drafts require approval</small></div><div><span><Video/></span><strong>Relevant learning</strong><small>Videos matched to report topics</small></div><div><span><Users/></span><strong>Care connection</strong><small>Patient feedback loop</small></div></section>
 
       <section className="workspace-section" id="workspace">
-        <div className="section-heading"><div><div className="eyebrow">CARE WORKSPACE</div><h2>{role === 'clinic' ? 'Turn a report into a reviewable care draft.' : 'Your care resources, in one place.'}</h2><p>{role === 'clinic' ? 'Use synthetic or de-identified text. The system separates what is documented from what still needs a clinician.' : 'Enter a clinic-issued access code to look up your approved care plan when the connected patient service is configured.'}</p></div><span className="workspace-tag"><span className="dot"/> {role === 'clinic' ? 'CLINIC WORKSPACE' : 'PATIENT PORTAL'}</span></div>
-        {role === 'clinic' ? <div className="workspace-grid">
+        <div className="section-heading"><div><div className="eyebrow">CARE WORKSPACE</div><h2>Turn a report into a reviewable care draft.</h2><p>Use synthetic or de-identified text. The system separates documented information from what still needs a clinician.</p></div><span className="workspace-tag"><span className="dot"/> CLINIC WORKSPACE</span></div>
+        <div className="workspace-grid">
           <div className="panel report-panel"><div className="panel-title"><span className="step-num">01</span><div><h3>Existing clinic report</h3><p>Only include information you are authorized to use.</p></div></div>
             <label className="upload-box"><Upload size={23}/><strong>{reportName || 'Choose a report text file'}</strong><span>TXT, text-based PDF and DOCX · scanned PDF OCR pending</span><input type="file" accept=".txt,.pdf,.docx" onChange={e => handleFile(e.target.files?.[0])}/></label>
-            <div className="or-divider"><span>OR PASTE REPORT TEXT</span></div><textarea value={reportText} onChange={e => {setReportText(e.target.value); setSummary(null); setVideos([]);}} placeholder="Paste synthetic or de-identified report text here…"/><div className="input-foot"><button className="demo-btn" onClick={() => {setReportText(demoReport);setReportName('Synthetic demo report');setSummary(null);setPlan('');setVideos([]);setStatus('Synthetic report loaded.');}}>Load synthetic example</button><span>{reportText.length} characters</span></div>
+            <div className="or-divider"><span>OR PASTE REPORT TEXT</span></div><textarea value={reportText} onChange={e => {setReportText(e.target.value); setSummary(null); setVideos([]);}} placeholder="Paste synthetic or de-identified report text here…"/>
+            <VoiceScribeButton onTranscript={text=>setReportText(current=>current ? current.trimEnd()+' '+text : text)} label="Dictate report note"/><div className="input-foot"><button className="demo-btn" onClick={() => {setReportText(demoReport);setReportName('Synthetic demo report');setSummary(null);setPlan('');setVideos([]);setStatus('Synthetic report loaded.');}}>Load synthetic example</button><span>{reportText.length} characters</span></div>
             <label className="consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)}/><span>I confirm this is synthetic or de-identified information and I am authorized to process it.</span></label>
             <button className="primary-btn full" disabled={busy} onClick={processReport}>{busy ? 'Processing…' : 'Analyze report & match resources'} <ArrowRight size={17}/></button>{status && <p className="status-message" role="status">{status}</p>}
           </div>
           <div className="panel results-panel"><div className="panel-title"><span className="step-num">02</span><div><h3>Report-informed review</h3><p>AI output is an assistant, never a decision-maker.</p></div></div>
-            {!summary ? <div className="empty-state"><div className="empty-icon"><ClipboardList size={25}/></div><strong>Your report review will appear here</strong><p>Submit report text to organize documented information and generate questions for the treating clinician.</p><div className="empty-points"><span><CheckCircle2 size={15}/> No automatic diagnosis</span><span><CheckCircle2 size={15}/> Missing information stays missing</span><span><CheckCircle2 size={15}/> Clinician approval required</span></div></div> : <div className="result-content"><div className="result-banner"><CheckCircle2 size={18}/><span>Draft generated · verify every field</span></div><h4>Summary of stated information</h4><p>{summary.summary}</p><h4>Items explicitly mentioned</h4><div className="chips">{(summary.mentioned.length ? summary.mentioned : ['No structured items returned']).map((x,i)=><span key={i}>{x}</span>)}</div><h4>Questions for the treating clinician</h4><ul>{summary.questionsForClinician.map((x,i)=><li key={i}>{x}</li>)}</ul><div className="caution-note"><AlertTriangle size={17}/><span>{summary.caution}</span></div><h4>Clinician-facing plan draft</h4><div className="plan-draft">{plan}</div><label className="token-field">Clinic authorization token<input type="password" value={clinicToken} onChange={e=>setClinicToken(e.target.value)} placeholder="Set CLINIC_ADMIN_TOKEN in deployment settings" autoComplete="off"/></label><label className="consent approval-check"><input type="checkbox" checked={clinicianApproved} onChange={e=>setClinicianApproved(e.target.checked)}/><span>I am the treating clinician or authorized reviewer and have reviewed and approved this plan for this demo case.</span></label><button className="primary-btn full" onClick={publishCase} disabled={busy || !clinicianApproved}>Publish approved case & create access code <ArrowRight size={17}/></button></div>}
+            {!summary ? <div className="empty-state"><div className="empty-icon"><ClipboardList size={25}/></div><strong>Your report review will appear here</strong><p>Submit report text to organize documented information and generate questions for the treating clinician.</p><div className="empty-points"><span><CheckCircle2 size={15}/> No automatic diagnosis</span><span><CheckCircle2 size={15}/> Missing information stays missing</span><span><CheckCircle2 size={15}/> Clinician approval required</span></div></div> : <div className="result-content"><div className="result-banner"><CheckCircle2 size={18}/><span>Draft generated · verify every field</span></div><h4>Summary of stated information</h4><p>{summary.summary}</p><h4>Items explicitly mentioned</h4><div className="chips">{(summary.mentioned.length ? summary.mentioned : ['No structured items returned']).map((x,i)=><span key={i}>{x}</span>)}</div><h4>Questions for the treating clinician</h4><ul>{summary.questionsForClinician.map((x,i)=><li key={i}>{x}</li>)}</ul><div className="caution-note"><AlertTriangle size={17}/><span>{summary.caution}</span></div><h4>Clinician-facing plan draft</h4><div className="plan-draft">{plan}</div><label className="token-field">Clinic authorization token<input type="password" value={clinicToken} onChange={e=>setClinicToken(e.target.value)} placeholder="Set CLINIC_ADMIN_TOKEN in deployment settings" autoComplete="off"/></label><label className="token-field">Assign approved case to patient<select value={selectedPatientId} onChange={e=>setSelectedPatientId(e.target.value)} required><option value="">Refresh clinic queue to load patient accounts</option>{patientAccounts.map(p=><option key={p.id} value={p.id}>{p.name} · {p.email}</option>)}</select></label><label className="consent approval-check"><input type="checkbox" checked={clinicianApproved} onChange={e=>setClinicianApproved(e.target.checked)}/><span>I am the treating clinician or authorized reviewer and have reviewed and approved this plan for this demo case.</span></label><button className="primary-btn full" onClick={publishCase} disabled={busy || !clinicianApproved || !selectedPatientId}>Publish approved case & create access code <ArrowRight size={17}/></button></div>}
           </div>
-        </div> : <div className="patient-card panel"><div className="empty-icon"><HeartPulse size={25}/></div><h3>Access your clinic-approved plan</h3><p>Enter the code supplied by your clinic. Only clinician-approved demo cases can be opened.</p><div className="code-row"><input value={accessCode} onChange={e=>setAccessCode(e.target.value)} placeholder="Clinic-issued access code"/><button className="primary-btn" disabled={patientBusy} onClick={lookupPatient}>{patientBusy?'Looking up…':'Find my plan'} <ArrowRight size={16}/></button></div>{patientCase && <div className="patient-result"><h4>Approved care information</h4><p>{patientCase.report_summary?.summary || 'See the summary provided by your clinic.'}</p><h4>Clinician-approved plan</h4><div className="plan-draft">{patientCase.clinician_plan}</div><h4>Learning resources</h4><p>Only resources approved by your clinician should be used. If a resource does not fit your needs, tell the clinic below.</p><h4>One-time camera snapshot</h4><p>Optional single still image for a basic framing-quality review. It does not score exercise technique or confirm safety.</p><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={e=>{setSnapshotFile(e.target.files?.[0]||null);setFrameReview(null);}}/><button className="secondary-btn" disabled={frameBusy} onClick={analyzeSnapshot}>{frameBusy?'Reviewing image…':'Review one snapshot'} <ArrowRight size={16}/></button>{frameReview && <div className="frame-review"><strong>Image quality</strong><p>{frameReview.imageQuality}</p><strong>Visible observation</strong><p>{frameReview.visibleObservation}</p><strong>Next step</strong><p>{frameReview.nextStep}</p><small>{frameReview.caution}</small></div>}</div>}{status && <p className="status-message">{status}</p>}</div>}
+        </div>
       </section>
 
-      {role === 'clinic' && <section className="workspace-section"><div className="section-heading"><div><div className="eyebrow">CLINIC REVIEW QUEUE</div><h2>Hear the patient. Review before changing the plan.</h2><p>Load saved demo cases to see structured feedback. Marking feedback reviewed records a decision; it does not edit or prescribe exercises.</p></div><button className="secondary-btn" onClick={loadClinicCases} disabled={clinicDashboardBusy}>{clinicDashboardBusy?'Loading…':'Refresh clinic queue'}</button></div><div className="dashboard-stats"><div className="panel"><strong>{clinicCases.length}</strong><span>Saved cases</span></div><div className="panel"><strong>{pendingFeedback.length}</strong><span>Feedback awaiting review</span></div><div className="panel"><strong>{clinicCases.reduce((n:number,c:any)=>n+(Array.isArray(c.feedback)?c.feedback.filter((f:any)=>f.category==='completed').length:0),0)}</strong><span>Reported completions</span></div></div>{clinicCases.length===0 ? <div className="no-videos"><strong>No cases loaded yet</strong><p>Enter the clinic token in the report review panel, then refresh this queue. Database environment variables must be configured.</p></div> : <div className="clinic-case-list">{clinicCases.map((c:any)=><article className="panel clinic-case" key={c.id}><div className="case-heading"><div><strong>{c.patient_label || 'Demo patient'}</strong><small>Code {c.access_code} · {new Date(c.created_at).toLocaleDateString()}</small></div><span>{c.clinician_approved?'Clinician approved':'Needs approval'}</span></div><p>{c.report_summary?.summary || 'Summary not available'}</p><h4>Patient feedback</h4>{(!Array.isArray(c.feedback)||c.feedback.length===0) ? <p>No feedback yet.</p> : c.feedback.map((f:any,i:number)=><div className="feedback-entry" key={f.id || i}><div><strong>{String(f.category||'general').replaceAll('_',' ')} · {String(f.exercise||'General session')}</strong><small>{f.createdAt ? new Date(f.createdAt).toLocaleString() : ''} · Comfort: {f.comfort||'not recorded'}{f.symptomRating!==null && f.symptomRating!==undefined ? ' · Self-reported rating: '+f.symptomRating+'/10' : ''}</small><p>{f.message || 'No additional note.'}</p>{f.clinicianNote && <p><b>Clinician note:</b> {f.clinicianNote}</p>}</div>{f.reviewStatus==='reviewed' ? <span>Reviewed: {f.reviewDecision}</span> : <div className="review-actions"><button onClick={()=>reviewFeedback(c.access_code,f.id,'reviewed_no_change','Reviewed; no plan change recorded.')}>Review · no change</button><button onClick={()=>reviewFeedback(c.access_code,f.id,'follow_up_needed','Follow-up needed; clinician to contact patient.')}>Flag follow-up</button></div>}</div>)}</article>)}</div>}{status && <p className="status-message" role="status">{status}</p>}</section>}
+      <section className="workspace-section">
+        <div className="section-heading"><div><div className="eyebrow">CLINIC REVIEW QUEUE</div><h2>Hear the patient. Review before changing the plan.</h2><p>Load saved demo cases to see structured feedback. The queue auto-refreshes every 15 seconds while the clinic token is active. Marking feedback reviewed records a decision; it does not edit or prescribe exercises.</p></div><button className="secondary-btn" onClick={() => void loadClinicCases()} disabled={clinicDashboardBusy}>{clinicDashboardBusy?'Loading…':'Refresh clinic queue'}</button></div>
+        <div className="dashboard-stats"><div className="panel"><strong>{clinicCases.length}</strong><span>Saved cases</span></div><div className="panel"><strong>{pendingFeedback.length}</strong><span>Feedback awaiting review</span></div><div className="panel"><strong>{clinicCases.reduce((n:number,c:any)=>n+(Array.isArray(c.feedback)?c.feedback.filter((f:any)=>f.category==='completed').length:0),0)}</strong><span>Reported completions</span></div><div className="panel"><strong>{pendingFeedback.filter((f:any)=>f.category==='pain').length}</strong><span>Pain reports to review</span></div></div>
+        {clinicCases.length===0 ? <div className="no-videos"><strong>No cases loaded yet</strong><p>Refresh the queue after signing in and configuring server-side storage.</p></div> : <div className="clinic-case-list">{clinicCases.map((c:any)=><article className="panel clinic-case" key={c.id}><div className="case-heading"><div><strong>{c.patient_label || 'Demo patient'}</strong><small>Code {c.access_code} · {new Date(c.created_at).toLocaleDateString()}</small></div><span>{c.clinician_approved?'Clinician approved':'Needs approval'}</span></div><p>{c.report_summary?.summary || 'Summary not available'}</p><h4>Patient feedback</h4><p className="priority-note">Review order: pending items first, then pain reports, then discomfort or difficulty. This is an explainable workflow priority—not a medical triage score.</p>{(!Array.isArray(c.feedback)||c.feedback.length===0) ? <p>No feedback yet.</p> : c.feedback.slice().sort((a:any,b:any)=>Number(a.reviewStatus==='reviewed')-Number(b.reviewStatus==='reviewed') || feedbackPriority(a.category)-feedbackPriority(b.category)).map((f:any,i:number)=><div className="feedback-entry" key={f.id || i}><div><strong>{String(f.category||'general').replaceAll('_',' ')} · {String(f.exercise||'General session')}</strong><small>{f.createdAt ? new Date(f.createdAt).toLocaleString() : ''} · Comfort: {f.comfort||'not recorded'}{f.symptomRating!==null && f.symptomRating!==undefined ? ' · Self-reported rating: '+f.symptomRating+'/10' : ''}</small><p>{f.message || 'No additional note.'}</p>{f.clinicianNote && <p><b>Clinician note:</b> {f.clinicianNote}</p>}</div>{f.reviewStatus==='reviewed' ? <span>Reviewed: {f.reviewDecision}</span> : <div className="review-actions"><button onClick={()=>reviewFeedback(c.access_code,f.id,'reviewed_no_change','Reviewed; no plan change recorded.')}>Review · no change</button><button onClick={()=>reviewFeedback(c.access_code,f.id,'follow_up_needed','Follow-up needed; clinician to contact patient.')}>Flag follow-up</button></div>}</div>)}</article>)}</div>}
+        {status && <p className="status-message" role="status">{status}</p>}
+      </section>
+
       <section className="resources-section" id="resources"><div className="section-heading"><div><div className="eyebrow">PERSONALIZED LEARNING</div><h2>Helpful videos, chosen from the report.</h2><p>Only topics explicitly mentioned in the report are matched. The treating clinician must approve each resource before a patient uses it.</p></div><span className="resource-count"><BookOpen size={17}/> REPORT-MATCHED</span></div>
         <div className="video-grid">{recommendations.length === 0 ? <div className="no-videos"><BookOpen size={22}/><strong>Videos appear after report review</strong><p>Submit a report or open an approved patient case first.</p></div> : recommendations.map((v,i)=><article className="video-card" key={v.title}>{v.videoId ? <div className={'video-player art-'+i}><iframe src={'https://www.youtube-nocookie.com/embed/'+v.videoId} title={v.title} loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerPolicy="strict-origin-when-cross-origin" allowFullScreen/><span className="video-label">NHS EDUCATIONAL VIDEO</span></div> : <div className={'video-art art-'+i}><div className="video-play"><PlayCircle size={30}/></div><span className="video-label">EDUCATIONAL RESOURCE</span></div>}<div className="video-body"><div className="video-source">{v.source}</div><h3>{v.title}</h3><p>{v.reason}</p><a href={v.url} target="_blank" rel="noreferrer">{v.videoId ? 'Open video on YouTube' : 'Find and play video'} <ArrowRight size={15}/></a><small>Open the video and confirm it is appropriate with the treating clinician before following exercises.</small></div></article>)}</div>
       </section>
@@ -211,6 +252,88 @@ export default function App() {
       <section className="feedback-section"><div className="feedback-copy"><div className="eyebrow">CLOSE THE LOOP</div><h2>Care should be a conversation.</h2><p>Structured feedback tells the clinic which activity was difficult and why. It does not automatically change the plan.</p></div><div className="feedback-form panel"><label>Which activity are you giving feedback about?</label><select value={feedbackExercise} onChange={e=>setFeedbackExercise(e.target.value)}><option>General session</option>{(patientCase?.video_recommendations || []).map((v:any,i:number)=><option key={i}>{v.title}</option>)}</select><label>How did it go?</label><select value={feedbackCategory} onChange={e=>setFeedbackCategory(e.target.value)}><option value="completed">Completed as planned</option><option value="too_difficult">Too difficult</option><option value="unable_to_perform">Unable to perform</option><option value="uncomfortable">Uncomfortable</option><option value="pain">Pain during activity</option><option value="video_not_helpful">Video not helpful / unclear</option><option value="missed">Could not complete session</option></select><label>Comfort</label><select value={comfortRating} onChange={e=>setComfortRating(e.target.value)}><option value="comfortable">Comfortable</option><option value="mild_discomfort">Some discomfort</option><option value="uncomfortable">Very uncomfortable</option><option value="not_sure">Not sure</option></select><label>Optional symptom rating (0–10, self-reported)</label><input type="number" min="0" max="10" value={symptomRating} onChange={e=>setSymptomRating(e.target.value)} placeholder="Leave blank if not applicable"/><label htmlFor="feedback">Anything you want your clinician to know?</label><textarea id="feedback" value={feedback} onChange={e=>setFeedback(e.target.value)} placeholder="Example: I could not follow the instructions because…"/><button className="secondary-btn" onClick={submitFeedback}>Send feedback to clinic <ArrowRight size={16}/></button><small>Feedback is linked to the clinic-issued access code. Pain is a reason to stop the activity and contact the treating clinician; this app does not provide emergency care.</small></div></section>
 
       <section className="safety-section" id="safety"><div className="safety-icon"><ShieldCheck size={24}/></div><div><h3>Safety comes before automation.</h3><p>This is a hackathon proof of concept, not a validated medical device or production clinical-record system. No video or exercise is automatically prescribed. A qualified clinician must review the original report, check contraindications and approve any individualized plan. ECG or glucose readings alone do not establish exercise clearance. Do not use real identifiable patient data in this demo.</p></div></section>
+    </main>
+    <footer><a className="brand" href="#"><span className="brand-mark"><HeartPulse size={20}/></span><span><strong>WellSpring</strong><small>Care, connected.</small></span></a><span>PS13 · Hackathon proof of concept</span><span>Designed for clinician-led support</span></footer>
+  </div>;
+}
+
+function PatientPortal() {
+  const { user } = useAuth();
+  const [accessCode, setAccessCode] = useState('');
+  const [patientCase, setPatientCase] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+  const [snapshotFile, setSnapshotFile] = useState<File | null>(null);
+  const [frameReview, setFrameReview] = useState<any>(null);
+  const [status, setStatus] = useState('');
+  const [feedback, setFeedback] = useState('');
+  const [feedbackExercise, setFeedbackExercise] = useState('General session');
+  const [feedbackCategory, setFeedbackCategory] = useState('completed');
+  const [comfortRating, setComfortRating] = useState('comfortable');
+  const [symptomRating, setSymptomRating] = useState('');
+  const videos: VideoPick[] = Array.isArray(patientCase?.video_recommendations) ? patientCase.video_recommendations : [];
+  const patientProgress: any[] = Array.isArray(patientCase?.patient_progress) ? patientCase.patient_progress : [];
+  const completedSessions = patientProgress.filter((item:any) => item.category === 'completed').length;
+  const unreviewedPain = patientProgress.some((item:any) => item.category === 'pain' && item.reviewStatus !== 'reviewed');
+  const difficultEntries = patientProgress.filter((item:any) => item.reviewStatus !== 'reviewed' && ['uncomfortable','too_difficult','unable_to_perform'].includes(item.category)).length;
+  const careLoopInsight = unreviewedPain
+    ? {kind:'attention',title:'Pain was reported',message:'Stop the activity that caused pain and contact your treating clinician promptly. WellSpring will not automatically change your plan.'}
+    : difficultEntries >= 2
+      ? {kind:'review',title:'Repeated difficulty needs review',message:'Your feedback has recorded repeated difficulty or discomfort. Ask your clinician to review the plan before making any changes yourself.'}
+      : completedSessions > 0
+        ? {kind:'positive',title:'Your activity history is growing',message:'You have self-reported '+completedSessions+' completed session(s). Your clinician can review this history during follow-up.'}
+        : {kind:'neutral',title:'Start your session history',message:'After a clinician-approved session, record whether it was completed, difficult, or uncomfortable so your clinician has useful feedback.'};
+  async function lookupPatient() {
+    if (!accessCode.trim()) { setStatus('Enter the code provided by your clinic.'); return; }
+    setBusy(true); setPatientCase(null);
+    try {
+      const r = await fetch('/api/cases?code=' + encodeURIComponent(accessCode.trim()), {cache:'no-store'});
+      const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Lookup failed');
+      setPatientCase(d.case); setStatus('Approved clinic case loaded.');
+    } catch(e) { setStatus(e instanceof Error ? e.message : 'Could not load case.'); }
+    finally { setBusy(false); }
+  }
+  async function analyzeSnapshot() {
+    if (!snapshotFile) { setStatus('Choose one still image first.'); return; }
+    if (!['image/jpeg','image/png','image/webp'].includes(snapshotFile.type) || snapshotFile.size > 4*1024*1024) { setStatus('Use a JPG, PNG, or WEBP image smaller than 4 MB.'); return; }
+    setBusy(true); setFrameReview(null);
+    try {
+      const review = await reviewStillImageLocally(snapshotFile);
+      setFrameReview(review);
+      setStatus('On-device ML framing review complete. The image was not uploaded.');
+    } catch(e) {
+      setStatus(e instanceof Error ? e.message : 'Local image review failed. Check the internet connection needed to load the model, or use the live camera framing tool.');
+    } finally { setBusy(false); }
+  }
+  async function submitFeedback() {
+    if(!accessCode.trim()) { setStatus('Load your clinic case before sending feedback.'); return; }
+    try {
+      const r=await fetch('/api/cases?action=feedback&code='+encodeURIComponent(accessCode.trim()),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({exercise:feedbackExercise,category:feedbackCategory,comfort:comfortRating,symptomRating:symptomRating||null,message:feedback})});
+      const d=await r.json(); if(!r.ok) throw new Error(d.error||'Feedback failed.');
+      setFeedback('');setSymptomRating('');const refreshed=await fetch('/api/cases?code='+encodeURIComponent(accessCode.trim()),{cache:'no-store'});const refreshedData=await refreshed.json().catch(()=>({}));if(refreshed.ok&&refreshedData.case)setPatientCase(refreshedData.case);setStatus(feedbackCategory==='pain'?'Feedback saved. Stop the activity that caused pain and contact your treating clinician promptly.':'Feedback saved for clinician review.');
+    } catch(e) { setStatus(e instanceof Error ? e.message : 'Could not save feedback.'); }
+  }
+  return <div className="app-shell">
+    <header className="topbar">
+      <a className="brand" href="#" aria-label="WellSpring home"><span className="brand-mark"><HeartPulse size={22}/></span><span><strong>WellSpring</strong><small>PS13 · connected care</small></span></a>
+      <nav><a href="#patient-plan">My plan</a><a href="#patient-resources">Learning resources</a><a href="#patient-feedback">Feedback</a></nav>
+      <AccessibilityTools /><AuthHeader />
+    </header>
+    <main>
+      <section className="hero patient-hero">
+        <div className="hero-copy"><div className="eyebrow"><span className="dot"/> YOUR PRIVATE CARE SPACE</div><h1>Hello, <em>{user.name.split(' ')[0]}.</em></h1><p>Your clinic-approved care resources and feedback tools are together here. Follow only the plan approved by your treating clinician.</p><div className="trust-line"><ShieldCheck size={17}/> Signed in as a patient · Clinician-led care</div></div>
+        <div className="hero-visual"><div className="care-card"><div className="care-card-head"><span className="mini-icon"><HeartPulse size={18}/></span><span className="live-label">YOUR CARE</span></div><div className="profile-row"><div className="avatar">{user.name.slice(0,1).toUpperCase()}</div><div><strong>{user.name}</strong><small>Patient workspace</small></div><span className="check"><CheckCircle2 size={17}/></span></div><div className="soft-line"/><div className="metric-row"><div><small>Plan access</small><strong>Clinic approved</strong></div><div><small>Changes</small><strong>Clinician reviewed</strong></div></div></div></div>
+      </section>
+      <SessionReminder />
+      <section className="workspace-section" id="patient-plan">
+        <div className="section-heading"><div><div className="eyebrow">MY CARE PLAN</div><h2>Open your approved plan.</h2><p>Enter the access code shared privately by your clinic. Your session must be authenticated before case information is returned.</p></div></div>
+        <div className="patient-card panel"><div className="empty-icon"><HeartPulse size={25}/></div><h3>Access your clinic-approved plan</h3><p>Enter the code supplied by your clinic.</p><div className="code-row"><input value={accessCode} onChange={e=>setAccessCode(e.target.value)} placeholder="Clinic-issued access code" autoComplete="off"/><button className="primary-btn" disabled={busy} onClick={lookupPatient}>{busy?'Loading…':'Find my plan'} <ArrowRight size={16}/></button></div>
+          {patientCase && <div className="patient-result"><h4>Approved care information</h4><p>{patientCase.report_summary?.summary || 'See the summary provided by your clinic.'}</p><h4>Clinician-approved plan</h4><div className="plan-draft">{patientCase.clinician_plan}</div><div className="plan-read-aloud"><ReadAloudButton text={patientCase.clinician_plan} label="Listen to my plan"/></div><section className="patient-progress" aria-label="Self-reported session history"><div className="patient-progress-heading"><div><h4>My session history</h4><p>Self-reported activity, not a clinical outcome measure.</p></div><span className="progress-count">{completedSessions} completed</span></div><div className="progress-stats"><div><strong>{patientProgress.length}</strong><span>Feedback entries</span></div><div><strong>{completedSessions}</strong><span>Reported completions</span></div></div>{patientProgress.length>0 && <div className="recovery-timeline"><div className="timeline-heading"><strong>Recent activity timeline</strong><span>Self-reported events · not vital signs or a clinical risk score</span></div><div className="timeline-track">{patientProgress.slice(-7).map((item:any,index:number)=>{const category=String(item.category||'general');const tone=category==='completed'?'green':category==='pain'?'red':['too_difficult','unable_to_perform','uncomfortable'].includes(category)?'amber':'blue';const score=Number(item.symptomRating);const hasScore=item.symptomRating!==null&&item.symptomRating!==undefined&&item.symptomRating!==''&&Number.isFinite(score);return <article className={'timeline-event tone-'+tone} key={item.id||item.createdAt||index} title={category.replace(/_/g,' ')}><span className="timeline-dot"/><div className="timeline-event-copy"><strong>{category.replace(/_/g,' ')}</strong><small>{item.createdAt&&!Number.isNaN(Date.parse(item.createdAt))?new Date(item.createdAt).toLocaleDateString():'Date unavailable'}</small>{hasScore&&<span className="timeline-rating">Self-reported symptom rating: {score}/10</span>}{item.reviewStatus==='reviewed'&&<span className="timeline-reviewed">Clinician reviewed</span>}</div></article>})}</div><div className="timeline-legend"><span><i className="legend-dot green"/> Completed</span><span><i className="legend-dot amber"/> Difficulty / discomfort</span><span><i className="legend-dot red"/> Pain reported</span><span><i className="legend-dot blue"/> Other feedback</span></div></div>}{patientProgress.length ? <div className="progress-list">{patientProgress.slice().reverse().slice(0,5).map((item:any)=><article key={item.id || item.createdAt} className="progress-item"><div><strong>{item.exercise}</strong><small>{item.createdAt && !Number.isNaN(Date.parse(item.createdAt)) ? new Date(item.createdAt).toLocaleString() : 'Date unavailable'}</small></div><span className="progress-category">{item.category.replace(/_/g,' ')}</span>{item.message && <p>{item.message}</p>}</article>)}</div> : <p className="progress-empty">Your feedback and self-reported completions will appear here after you submit a session update.</p>}</section><section className={"care-loop-insight care-loop-" + careLoopInsight.kind} aria-live="polite"><div className="eyebrow">FEEDBACK-TO-ACTION LOOP</div><h4>{careLoopInsight.title}</h4><p>{careLoopInsight.message}</p><small>Explainable rule-based support · clinician retains control of all plan changes.</small></section><Suspense fallback={<p className="live-camera-status">Loading camera support…</p>}><LiveCameraCoach /></Suspense><h4>Learning resources</h4><p>Only resources approved by your clinician should be used.</p><div className="video-grid">{videos.map((v,i)=><article className="video-card" key={v.title}><div className={'video-art art-'+i}><div className="video-play"><PlayCircle size={30}/></div></div><div className="video-body"><div className="video-source">{v.source}</div><h3>{v.title}</h3><p>{v.reason}</p><a href={v.url} target="_blank" rel="noreferrer">Open educational resource <ArrowRight size={15}/></a></div></article>)}</div><h4>Optional on-device image framing review</h4><p>MediaPipe ML checks visible shoulder/hip framing in your browser. The image stays on this device. It cannot detect internal muscle activation or confirm exercise safety. An internet connection is needed to load the model the first time.</p><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={e=>{setSnapshotFile(e.target.files?.[0]||null);setFrameReview(null);}}/><button className="secondary-btn" disabled={busy} onClick={analyzeSnapshot}>{busy?'Reviewing…':'Review image on this device'} <ArrowRight size={16}/></button>{frameReview && <div className="frame-review"><strong>Image quality</strong><p>{frameReview.imageQuality}</p><strong>Visible observation</strong><p>{frameReview.visibleObservation}</p><strong>Next step</strong><p>{frameReview.nextStep}</p><small>{frameReview.caution}</small></div>}</div>}
+          {status && <p className="status-message" role="status">{status}</p>}
+        </div>
+      </section>
+      {patientCase && <section className="feedback-section" id="patient-feedback"><div className="feedback-copy"><div className="eyebrow">CLOSE THE LOOP</div><h2>Your feedback matters.</h2><p>Tell your clinic which activity you completed or found difficult. Feedback does not automatically change your plan.</p></div><div className="feedback-form panel"><label>Which exercise or resource?</label><select value={feedbackExercise} onChange={e=>setFeedbackExercise(e.target.value)}><option>General session</option>{videos.map(v=><option key={v.title}>{v.title}</option>)}</select><label>How did it go?</label><select value={feedbackCategory} onChange={e=>setFeedbackCategory(e.target.value)}><option value="completed">Completed as planned</option><option value="too_difficult">Too difficult</option><option value="unable_to_perform">Unable to perform</option><option value="uncomfortable">Uncomfortable</option><option value="pain">Pain during activity</option><option value="video_not_helpful">Video not helpful / unclear</option><option value="missed">Could not complete session</option><option value="general">Other</option></select><label>Comfort</label><select value={comfortRating} onChange={e=>setComfortRating(e.target.value)}><option value="comfortable">Comfortable</option><option value="mild_discomfort">Some discomfort</option><option value="uncomfortable">Very uncomfortable</option><option value="not_sure">Not sure</option></select><label>Optional symptom rating (0–10)</label><input type="number" min="0" max="10" value={symptomRating} onChange={e=>setSymptomRating(e.target.value)} placeholder="Leave blank if not applicable"/><label htmlFor="patient-feedback-note">Anything you want your clinician to know?</label><textarea id="patient-feedback-note" value={feedback} onChange={e=>setFeedback(e.target.value)} placeholder="Tell your clinician what happened…"/>
+          <VoiceScribeButton onTranscript={text=>setFeedback(current=>current ? current.trimEnd()+' '+text : text)} label="Dictate feedback"/><button className="secondary-btn" onClick={submitFeedback}>Send feedback to clinic <ArrowRight size={16}/></button><small>Pain is a reason to stop the activity and contact your treating clinician. This app does not provide emergency care.</small></div></section>}
+      <section className="safety-section" id="safety"><div className="safety-icon"><ShieldCheck size={24}/></div><div><h3>Safety comes before automation.</h3><p>This is a hackathon proof of concept, not a validated medical device. The app does not diagnose, prescribe, or verify internal muscle activation. A qualified clinician must approve any individualized plan.</p></div></section>
     </main>
     <footer><a className="brand" href="#"><span className="brand-mark"><HeartPulse size={20}/></span><span><strong>WellSpring</strong><small>Care, connected.</small></span></a><span>PS13 · Hackathon proof of concept</span><span>Designed for clinician-led support</span></footer>
   </div>;

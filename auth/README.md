@@ -1,0 +1,1 @@
+WellSpring authentication implementation notes.
