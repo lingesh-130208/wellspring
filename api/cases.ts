@@ -81,7 +81,7 @@ export default async function handler(req:any,res:any) {
    const rating=body.symptomRating===null || body.symptomRating===undefined || body.symptomRating==='' ? null : Number(body.symptomRating);
    if(rating!==null && (!Number.isInteger(rating)||rating<0||rating>10)) return res.status(400).json({error:'Self-reported rating must be from 0 to 10.'});
    if(message.length<2 && !allowedCategories.includes(category)) return res.status(400).json({error:'Feedback is required.'});
-   const lookup=await fetch(supabaseUrl+'/rest/v1/care_cases?access_code=eq.'+encodeURIComponent(accessCode)+'&select=id,feedback,expires_at&limit=1',{headers:headers()});
+   const lookup=await fetch(supabaseUrl+'/rest/v1/care_cases?access_code=eq.'+encodeURIComponent(accessCode)+'&select=id,patient_account_id,feedback,expires_at&limit=1',{headers:headers()});
    if(!lookup.ok) return res.status(502).json({error:'Could not verify the case.'});
    const rows=await lookup.json(); const record=rows[0];
    if(!record || new Date(record.expires_at).getTime()<Date.now() || record.patient_account_id !== session?.id) return res.status(404).json({error:'No active case found for that code.'});
