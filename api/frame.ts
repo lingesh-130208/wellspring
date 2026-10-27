@@ -1,4 +1,4 @@
-import { requireRole } from './auth';
+import { requireRole } from './auth.js';
 export default async function handler(req:any,res:any) {
  res.setHeader('Cache-Control','no-store');
  if (!requireRole(req, res, ['patient'])) return;
