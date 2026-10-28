@@ -36,7 +36,8 @@ function chooseVideos(text: string): VideoPick[] {
 
 export default function App() {
   const { user } = useAuth();
-  const [reportText, setReportText] = useState('');
+  const isSyntheticDemo = new URLSearchParams(window.location.search).get('demo') === '1';
+  const [reportText, setReportText] = useState(() => isSyntheticDemo ? demoReport : '');
   const [reportName, setReportName] = useState('');
   const [summary, setSummary] = useState<ReportSummary | null>(null);
   const [plan, setPlan] = useState('');
@@ -54,7 +55,7 @@ export default function App() {
   const [clinicDashboardBusy, setClinicDashboardBusy] = useState(false);
   const [patientAccounts, setPatientAccounts] = useState<{id:string;name:string;email:string}[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState('');
-  const [consent, setConsent] = useState(false);
+  const [consent, setConsent] = useState(() => isSyntheticDemo);
   const [clinicToken, setClinicToken] = useState('');
   const [clinicianApproved, setClinicianApproved] = useState(false);
   const [patientCase, setPatientCase] = useState<any>(null);
@@ -106,7 +107,7 @@ export default function App() {
     if (!consent) { setStatus('Confirm that the report is synthetic or de-identified before processing.'); return; }
     setBusy(true); setStatus('Organizing the report and matching educational resources…');
     try {
-      const response = await fetch('/api/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reportText }) });
+      const response = await fetch('/api/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reportText, demoMode: isSyntheticDemo }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Report service is unavailable.');
       setSummary(data.summary);
