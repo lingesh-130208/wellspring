@@ -22,10 +22,12 @@ function localSummary(text:string) {
 }
 export default async function handler(req:any,res:any) {
  res.setHeader('Cache-Control','no-store');
- if (!requireRole(req, res, ['clinician'])) return;
  if(req.method!=='POST') return res.status(405).json({error:'Method not allowed'});
  const reportText=typeof req.body?.reportText==='string'?req.body.reportText.slice(0,30000):'';
  if(reportText.trim().length<20) return res.status(400).json({error:'Provide at least 20 characters of report text.'});
+ // Public demo mode is deliberately limited to one fixed synthetic report. It never accepts arbitrary patient text without clinician authentication.
+ const isSyntheticDemo = req.body?.demoMode === true && reportText.trim() === 'Synthetic demo only: older adult with urinary leakage noted in the clinic report. No exercise clearance or contraindication status is documented.';
+ if (!isSyntheticDemo && !requireRole(req, res, ['clinician'])) return;
  const videos=matchVideos(reportText);
  const apiKey=process.env.GEMINI_API_KEY;
  if(!apiKey) return res.status(200).json({mode:'local-demo',summary:localSummary(reportText),planDraft:'DRAFT ONLY — The treating clinician must assess the original report, check contraindications and approve any individualized plan. Do not use this draft to start, intensify, or change treatment.',videos});
